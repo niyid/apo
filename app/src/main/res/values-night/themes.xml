@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     
-    <!-- Base application theme - Material3 for Compose -->
+    <!-- Night theme - inherits from base with darker colors -->
     <style name="Theme.Apo" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Primary brand color - Monero Orange -->
         <item name="colorPrimary">#FF6600</item>
         <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorPrimaryContainer">#FF8833</item>
-        <item name="colorOnPrimaryContainer">#000000</item>
+        <item name="colorPrimaryContainer">#CC5200</item>
+        <item name="colorOnPrimaryContainer">#FFFFFF</item>
         
         <!-- Secondary brand color -->
-        <item name="colorSecondary">#4D4D4D</item>
+        <item name="colorSecondary">#6D6D6D</item>
         <item name="colorOnSecondary">#FFFFFF</item>
-        <item name="colorSecondaryContainer">#6D6D6D</item>
-        <item name="colorOnSecondaryContainer">#FFFFFF</item>
+        <item name="colorSecondaryContainer">#4D4D4D</item>
+        <item name="colorOnSecondaryContainer">#E0E0E0</item>
         
         <!-- Tertiary colors -->
         <item name="colorTertiary">#4CAF50</item>
         <item name="colorOnTertiary">#FFFFFF</item>
         
-        <!-- Background colors -->
-        <item name="android:colorBackground">#0F0F0F</item>
-        <item name="colorSurface">#1A1A1A</item>
+        <!-- Background colors - Darker for night mode -->
+        <item name="android:colorBackground">#000000</item>
+        <item name="colorSurface">#0F0F0F</item>
         <item name="colorOnBackground">#E0E0E0</item>
         <item name="colorOnSurface">#E0E0E0</item>
         
@@ -41,13 +41,6 @@
         
         <!-- Enable edge-to-edge -->
         <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p">shortEdges</item>
-    </style>
-    
-    <!-- Splash screen theme (optional) -->
-    <style name="Theme.Apo.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#0F0F0F</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
-        <item name="postSplashScreenTheme">@style/Theme.Apo</item>
     </style>
     
 </resources>
