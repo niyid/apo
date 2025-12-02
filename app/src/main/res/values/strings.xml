@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Apo Wallet</string>
+    <string name="wallet_title">Monero Wallet</string>
+    <string name="send_title">Send XMR</string>
+    <string name="receive_title">Receive XMR</string>
+    <string name="history_title">Transaction History</string>
+    <string name="settings_title">Settings</string>
+</resources>
