@@ -65,9 +65,9 @@
     
     
     <string name="settings_maintenance">Maintenance</string>
-    
+    <string name="settings_rescan_blockchain">Rescan Blockchain</string>
     <string name="settings_rescan_subtitle">Fix missing transactions</string>
-    <string name="settings_rescan_progress">Scanning... %.1f%%</string>
+    <string name="settings_rescan_progress">Scanning… %.1f%%</string>
     <string name="settings_force_refresh">Force Balance Refresh</string>
     <string name="settings_force_refresh_subtitle">Recalculate wallet balance</string>
     
@@ -125,8 +125,8 @@
     <string name="tx_search_error">Error: %s</string>
     
     
-    <string name="init_wallet">Initializing wallet...</string>
-    <string name="init_wait">This may take a moment...</string>
+    <string name="init_wallet">Initializing wallet…</string>
+    <string name="init_wait">This may take a moment…</string>
     
     
     <string name="error_wallet_not_ready">Wallet not initialized</string>
@@ -141,9 +141,4 @@
     
     <string name="qr_add_library">Add QRCodeGenerator library</string>
     
-
-    <!-- Additional Resources -->
-    <string name="action_search_transaction">Search Transaction</string>
-    <string name="qr_code_placeholder">QR CODE</string>
-
-</resources>
+<!-- Navigation --><string name="nav_send">Send</string><!-- Wallet/Home --><string name="action_copy">Copy</string><string name="action_search">Search</string><!-- Send --><string name="send_success_format">Transaction sent! TxID: %s</string><!-- Transaction --><string name="tx_search_error_format">Error: %s</string><string name="tx_search_found_format">Transaction found!\nAmount: %1$s XMR\nConfirmations: %2$d</string><!-- Settings --><string name="common_no">No</string><string name="common_yes">Yes</string><string name="settings_rescan_blockchain">Rescan Blockchain</string><!-- Status --><string name="status_copied">Copied!</string></resources>

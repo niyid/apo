@@ -306,6 +306,20 @@ public class WalletSuite {
         
         Log.i(TAG, "=== SHUTDOWN COMPLETE ===");
     }
+    
+    
+    public void getTransactionHistory(TransactionHistoryCallback callback) {
+        try {
+            List<TransactionInfo> transactions = wallet.getHistory().getAll();
+            if(callback != null) {
+                callback.onSuccess(transactions);
+            }
+        } catch (Exception e) {
+            if(callback != null) {
+                callback.onError(e.getMessage());
+            }
+        }
+    }    
 
     /**
      * Starts the periodic sync scheduler
