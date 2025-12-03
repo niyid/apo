@@ -1,4 +1,4 @@
-package com.bitchat.apo;
+package com.techducat.apo;
 
 import android.content.Context;
 import android.os.Environment;
@@ -275,6 +275,11 @@ public class WalletSuite {
             currentWalletPath = null;
         }
     }
+    
+    public void rescanBlockchain() {
+       Log.i(TAG, "Public rescanBlockchain() called from UI");
+       triggerRescan();
+   }    
     
     public void close() {
         Log.i(TAG, "=== SHUTDOWN INITIATED ===");

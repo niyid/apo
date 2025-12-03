@@ -360,7 +360,7 @@
     <string name="menu_close">மூடு</string>
     <string name="pocketchange_info">மீண்டும் மீண்டும் செலவழிக்க காத்திருக்கும் நேரத்தைக் குறைக்க, அதிக கட்டணங்களின் இழப்பில் மோனெருசோ உதிரி மாற்றத்தை உருவாக்க முடியும். இது தேர்ந்தெடுக்கப்பட்ட தொகையில் குறைந்தது 6 நாணயங்களை உருவாக்கி பராமரிக்க முயற்சிக்கும்.</string>
     <string name="message_qr_failed">பகிர்வதற்கு QR ஐ உருவாக்கத் தவறிவிட்டது!</string>
-    <string name="tx_locked">பரிவர்த்தனை தொகை தொகுதி %1$d வரை பூட்டப்பட்டுள்ளது ( %2$d தொகுதிகள் ≈ %3 $, 2f நாட்கள்)</string>
+    <string name="tx_locked" formatted="false">பரிவர்த்தனை தொகை தொகுதி %1$d வரை பூட்டப்பட்டுள்ளது ( %2$d தொகுதிகள் ≈ %3 $, 2f நாட்கள்)</string>
     <string name="setting_theme">சூல் தண்டு</string>
     <string name="menu_cancel">ரத்துசெய்</string>
     <string name="title_info">தகவல்</string>

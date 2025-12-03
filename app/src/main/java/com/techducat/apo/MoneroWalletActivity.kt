@@ -891,24 +891,28 @@ fun HistoryScreen(walletSuite: WalletSuite) {
     // Load real transaction data
     LaunchedEffect(Unit) {
         scope.launch {
-            try {
-                val txHistory = walletSuite.getTransactionHistory()
-                transactions = txHistory.map { txInfo ->
-                    val isReceived = txInfo.direction == com.m2049r.xmrwallet.model.TransactionInfo.Direction.Direction_In
-                    Transaction(
-                        type = if (isReceived) "Received" else "Sent",
-                        amount = WalletSuite.convertAtomicToXmr(Math.abs(txInfo.amount)),
-                        date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                            .format(Date(txInfo.timestamp * 1000)),
-                        confirmed = !txInfo.isPending,
-                        txId = txInfo.hash
-                    )
+            isLoading = true
+            walletSuite.getTransactionHistory(object : WalletSuite.TransactionHistoryCallback {
+                override fun onSuccess(txList: List<TransactionInfo>) {
+                    transactions = txList.map { txInfo ->
+                        val isReceived = txInfo.direction == TransactionInfo.Direction.Direction_In
+                        Transaction(
+                            type = if (isReceived) "Received" else "Sent",
+                            amount = WalletSuite.convertAtomicToXmr(Math.abs(txInfo.amount)),
+                            date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                                .format(Date(txInfo.timestamp * 1000)),
+                            confirmed = !txInfo.isPending,
+                            txId = txInfo.hash
+                        )
+                    }
+                    isLoading = false
                 }
-                isLoading = false
-            } catch (e: Exception) {
-                errorMessage = e.message
-                isLoading = false
-            }
+                
+                override fun onError(error: String) {
+                    errorMessage = error
+                    isLoading = false
+                }
+            })
         }
     }
     
@@ -1338,7 +1342,7 @@ fun SettingsScreen(
             SettingsCard(
                 title = stringResource(R.string.settings_force_refresh),
                 subtitle = stringResource(R.string.settings_force_refresh_subtitle),
-                icon = Icons.Default.Sync,
+                icon = Icons.Default.Refresh,
                 onClick = { walletSuite.triggerImmediateSync() }
             )
         }

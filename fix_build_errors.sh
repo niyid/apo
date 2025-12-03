@@ -1,151 +1,29 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    
-    <string name="app_name">Apo</string>
-    
-    
-    <string name="nav_wallet">Wallet</string>
-    <string name="nav_send">Send</string>
-    <string name="nav_receive">Receive</string>
-    <string name="nav_history">History</string>
-    <string name="nav_settings">Settings</string>
-    
-    
-    <string name="wallet_total_balance">Total Balance</string>
-    <string name="wallet_unlocked_balance">Unlocked: %s XMR</string>
-    <string name="wallet_syncing">Syncing: %1$.1f%% (%2$d / %3$d)</string>
-    <string name="wallet_your_address">Your Address</string>
-    <string name="wallet_height">Height</string>
-    <string name="wallet_network">Network</string>
-    
-    
-    <string name="action_receive">Receive</string>
-    <string name="action_send">Send</string>
-    <string name="action_exchange">Exchange</string>
-    <string name="action_refresh">Refresh</string>
-    
-    
-    <string name="send_title">Send Monero</string>
-    <string name="send_available_balance">Available Balance</string>
-    <string name="send_recipient_address">Recipient Address</string>
-    <string name="send_amount">Amount (XMR)</string>
-    <string name="send_max">MAX</string>
-    <string name="send_scan_qr">Scan QR</string>
-    <string name="send_transaction">Send Transaction</string>
-    <string name="send_confirm_title">Confirm Transaction</string>
-    <string name="send_confirm_amount">Amount:</string>
-    <string name="send_confirm_to">To:</string>
-    <string name="send_confirm_warning">This transaction cannot be reversed. Please verify the details carefully.</string>
-    <string name="send_confirm_button">Confirm &amp; Send</string>
-    
-    
-    <string name="receive_title">Receive Monero</string>
-    <string name="receive_your_address">Your Monero Address</string>
-    <string name="receive_qr_code">QR Code</string>
-    <string name="receive_amount_optional">Amount (optional)</string>
-    <string name="receive_copy_address">Copy Address</string>
-    <string name="receive_address_copied">Copied!</string>
-    <string name="receive_share_info">Share this address to receive Monero payments</string>
-    
-    
-    <string name="history_title">Transaction History</string>
-    <string name="history_no_transactions">No transactions yet</string>
-    <string name="history_received">Received</string>
-    <string name="history_sent">Sent</string>
-    <string name="history_confirmed">Confirmed</string>
-    <string name="history_pending">Pending</string>
-    
-    
-    <string name="settings_title">Settings</string>
-    <string name="settings_wallet_info">Wallet Information</string>
-    <string name="settings_status">Status</string>
-    <string name="settings_syncing">Syncing</string>
-    <string name="settings_ready">Ready</string>
-    <string name="settings_not_ready">Not Ready</string>
-    
-    
-    <string name="settings_maintenance">Maintenance</string>
-    
-    <string name="settings_rescan_subtitle">Fix missing transactions</string>
-    <string name="settings_rescan_progress">Scanning... %.1f%%</string>
-    <string name="settings_force_refresh">Force Balance Refresh</string>
-    <string name="settings_force_refresh_subtitle">Recalculate wallet balance</string>
-    
-    
-    <string name="settings_backup_security">Backup &amp; Security</string>
-    <string name="settings_view_seed">View Seed Phrase</string>
-    <string name="settings_view_seed_subtitle">Backup your wallet recovery phrase</string>
-    <string name="settings_export_keys">Export Keys</string>
-    <string name="settings_export_keys_subtitle">Export private keys</string>
-    
-    
-    <string name="settings_network">Network</string>
-    <string name="settings_node_settings">Node Settings</string>
-    <string name="settings_current_node">Current: %1$s:%2$d</string>
-    <string name="settings_reload_config">Reload Configuration</string>
-    <string name="settings_reload_config_subtitle">Refresh wallet configuration</string>
-    
-    
-    <string name="settings_advanced">Advanced</string>
-    <string name="settings_tx_search">Transaction Search</string>
-    <string name="settings_tx_search_subtitle">Search for missing transaction by ID</string>
-    <string name="settings_security">Security</string>
-    <string name="settings_security_subtitle">Password &amp; privacy settings</string>
-    
-    
-    <string name="dialog_close">Close</string>
-    <string name="dialog_cancel">Cancel</string>
-    <string name="dialog_confirm">Confirm</string>
-    <string name="dialog_yes">Yes</string>
-    <string name="dialog_no">No</string>
-    
-    
-    <string name="rescan_title">Rescan Blockchain</string>
-    <string name="rescan_message">This will rescan the blockchain to find missing transactions. This may take several minutes. Continue?</string>
-    <string name="rescan_start">Start Rescan</string>
-    
-    
-    <string name="seed_title">Seed Phrase</string>
-    <string name="seed_warning">⚠️ Never share your seed phrase with anyone!</string>
-    <string name="seed_info">Your seed phrase is the master key to your wallet. Store it securely offline.</string>
-    <string name="seed_placeholder">[Seed phrase would be displayed here - implement wallet.getSeed() method]</string>
-    
-    
-    <string name="node_title">Node Configuration</string>
-    <string name="node_current_daemon">Current daemon:</string>
-    <string name="node_change_info">To change the node, update wallet.properties file.</string>
-    
-    
-    <string name="tx_search_title">Search Transaction</string>
-    <string name="tx_search_info">Enter transaction ID to search for missing transactions</string>
-    <string name="tx_search_id">Transaction ID</string>
-    <string name="tx_search_button">Search</string>
-    <string name="tx_search_found">Transaction found!\nAmount: %1$s XMR\nConfirmations: %2$d</string>
-    <string name="tx_search_not_found">Transaction not found in wallet history</string>
-    <string name="tx_search_error">Error: %s</string>
-    
-    
-    <string name="init_wallet">Initializing wallet...</string>
-    <string name="init_wait">This may take a moment...</string>
-    
-    
-    <string name="error_wallet_not_ready">Wallet not initialized</string>
-    <string name="error_invalid_amount">Invalid amount</string>
-    <string name="error_insufficient_balance">Insufficient balance. Required: %1$s XMR, Available: %2$s XMR</string>
-    <string name="error_wallet_busy">Wallet busy: %s</string>
-    <string name="error_transaction_failed">Transaction failed: %s</string>
-    
-    
-    <string name="success_transaction_sent">Transaction sent!\nTxID: %s</string>
-    
-    
-    <string name="qr_add_library">Add QRCodeGenerator library</string>
-    
+#!/bin/bash
 
-    <!-- Additional Resources -->
-    <string name="action_search_transaction">Search Transaction</string>
-    <string name="action_search">Search</string>
-    <string name="qr_code_placeholder">QR CODE</string>
+# Script to fix Android build errors for Apo wallet
+# This script addresses missing string resources and splash screen issues
+
+set -e
+
+PROJECT_DIR="$HOME/git/apo"
+STRINGS_FILE="$PROJECT_DIR/app/src/main/res/values/strings.xml"
+STRINGS_TA_FILE="$PROJECT_DIR/app/src/main/res/values-ta/strings.xml"
+THEMES_FILE="$PROJECT_DIR/app/src/main/res/values/themes.xml"
+BUILD_GRADLE="$PROJECT_DIR/app/build.gradle"
+
+echo "=== Apo Wallet Build Fixer ==="
+echo "Project directory: $PROJECT_DIR"
+echo ""
+
+# Backup existing files
+echo "Creating backups..."
+cp "$STRINGS_FILE" "$STRINGS_FILE.backup.$(date +%s)" 2>/dev/null || true
+cp "$THEMES_FILE" "$THEMES_FILE.backup.$(date +%s)" 2>/dev/null || true
+
+# Fix 1: Add missing string resources to values/strings.xml
+echo "Adding missing string resources..."
+
+cat >> "$STRINGS_FILE" << 'EOF'
 
     <!-- Additional Missing Resources -->
     <string name="action_copy">Copy</string>
@@ -513,41 +391,82 @@
     <!-- Splash Screen Resources -->
     <string name="settings_rescan_blockchain">Rescan Blockchain</string>
 
-
-    <!-- Pocket Change -->
-    <string name="pocketchange_title">Pocket Change</string>
-    <string name="pocketchange_amount">Amount</string>
-    
-    <!-- Transition Names -->
-    <string name="subaddress_info_transition_name" translatable="false">subaddress_info_transition</string>
-    <string name="tx_details_transition_name" translatable="false">tx_details_transition</string>
-    <string name="subaddress_txinfo_transition_name" translatable="false">subaddress_txinfo_transition</string>
-    
-    <!-- Node Settings -->
-    <string name="node_use_ssl">Use SSL</string>
-
-
-    <!-- Preference Keys (used as identifiers) -->
-    <string name="preferred_locale" translatable="false">preferred_locale</string>
-    <string name="preferred_nightmode" translatable="false">preferred_nightmode</string>
-    <string name="preferred_theme" translatable="false">preferred_theme</string>
-    <string name="preferred_lock" translatable="false">preferred_lock</string>
-    <string name="preferred_stickyfiat" translatable="false">preferred_stickyfiat</string>
-    <string name="credits_info" translatable="false">credits_info</string>
-    <string name="privacy_info" translatable="false">privacy_info</string>
-    <string name="about_info" translatable="false">about_info</string>
-
-    <!-- Array Values for Preferences -->
-    <string-array name="daynight_values" translatable="false">
-        <item>AUTO</item>
-        <item>DAY</item>
-        <item>NIGHT</item>
-    </string-array>
-
-    <string-array name="themes_values" translatable="false">
-        <item>Classic</item>
-        <item>Oled</item>
-        <item>BrightBlue</item>
-    </string-array>
-
 </resources>
+EOF
+
+echo "✓ Missing string resources added"
+
+# Fix 2: Fix Tamil strings.xml formatting error
+echo "Fixing Tamil strings.xml formatting..."
+if [ -f "$STRINGS_TA_FILE" ]; then
+    sed -i 's/<string name="tx_locked">/<string name="tx_locked" formatted="false">/' "$STRINGS_TA_FILE"
+    echo "✓ Tamil strings.xml fixed"
+else
+    echo "⚠ Tamil strings.xml not found, skipping"
+fi
+
+# Fix 3: Add/update themes.xml with splash screen support
+echo "Updating themes.xml..."
+
+cat > "$THEMES_FILE" << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme -->
+    <style name="AppTheme" parent="Theme.Material3.DynamicColors.DayNight">
+        <item name="colorPrimary">@color/orange_primary</item>
+        <item name="colorPrimaryVariant">@color/orange_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/gray_secondary</item>
+        <item name="colorSecondaryVariant">@color/gray_dark</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:navigationBarColor">@color/black</item>
+    </style>
+
+    <!-- Splash Screen Theme (uses basic Theme.AppCompat to avoid splash screen library) -->
+    <style name="Theme.SplashScreen" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/orange_primary</item>
+        <item name="android:statusBarColor">@color/orange_primary</item>
+        <item name="android:navigationBarColor">@color/orange_primary</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+
+    <color name="orange_primary">#FF6600</color>
+    <color name="orange_dark">#FF4400</color>
+    <color name="gray_secondary">#4D4D4D</color>
+    <color name="gray_dark">#333333</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#0F0F0F</color>
+</resources>
+EOF
+
+echo "✓ themes.xml updated with splash screen theme"
+
+# Fix 4: Remove splash screen library dependency if present
+echo "Checking build.gradle for splash screen library..."
+if grep -q "androidx.core:core-splashscreen" "$BUILD_GRADLE"; then
+    echo "Removing splash screen library dependency..."
+    sed -i '/androidx.core:core-splashscreen/d' "$BUILD_GRADLE"
+    echo "✓ Splash screen library removed"
+else
+    echo "✓ No splash screen library found"
+fi
+
+# Fix 5: Clean and rebuild
+echo ""
+echo "Cleaning project..."
+cd "$PROJECT_DIR"
+./gradlew clean
+
+echo ""
+echo "=== Fix Summary ==="
+echo "✓ Added missing string resources to values/strings.xml"
+echo "✓ Fixed Tamil strings.xml formatting (tx_locked)"
+echo "✓ Updated themes.xml with compatible splash screen theme"
+echo "✓ Removed incompatible splash screen library"
+echo "✓ Cleaned project"
+echo ""
+echo "Now run: ../server_extras/gradleBuildCmd.sh"
+echo ""
+echo "Backup files created with .backup.TIMESTAMP extension"
+echo "If issues persist, restore backups and report to developers."

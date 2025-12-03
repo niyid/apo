@@ -1,53 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
-    
-    <!-- Base application theme - Material3 for Compose -->
-    <style name="Theme.Apo" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Primary brand color - Monero Orange -->
-        <item name="colorPrimary">#FF6600</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorPrimaryContainer">#FF8833</item>
-        <item name="colorOnPrimaryContainer">#000000</item>
-        
-        <!-- Secondary brand color -->
-        <item name="colorSecondary">#4D4D4D</item>
-        <item name="colorOnSecondary">#FFFFFF</item>
-        <item name="colorSecondaryContainer">#6D6D6D</item>
-        <item name="colorOnSecondaryContainer">#FFFFFF</item>
-        
-        <!-- Tertiary colors -->
-        <item name="colorTertiary">#4CAF50</item>
-        <item name="colorOnTertiary">#FFFFFF</item>
-        
-        <!-- Background colors -->
-        <item name="android:colorBackground">#0F0F0F</item>
-        <item name="colorSurface">#1A1A1A</item>
-        <item name="colorOnBackground">#E0E0E0</item>
-        <item name="colorOnSurface">#E0E0E0</item>
-        
-        <!-- Error colors -->
-        <item name="colorError">#FF6600</item>
-        <item name="colorOnError">#FFFFFF</item>
-        
-        <!-- Status bar and navigation bar -->
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
-        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
-        
-        <!-- Window properties -->
+<resources>
+    <!-- Base application theme -->
+    <style name="AppTheme" parent="Theme.Material3.DynamicColors.DayNight">
+        <item name="colorPrimary">@color/orange_primary</item>
+        <item name="colorPrimaryVariant">@color/orange_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/gray_secondary</item>
+        <item name="colorSecondaryVariant">@color/gray_dark</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:navigationBarColor">@color/black</item>
+    </style>
+
+    <!-- Splash Screen Theme (uses basic Theme.AppCompat to avoid splash screen library) -->
+    <style name="Theme.SplashScreen" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/orange_primary</item>
+        <item name="android:statusBarColor">@color/orange_primary</item>
+        <item name="android:navigationBarColor">@color/orange_primary</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
-        
-        <!-- Enable edge-to-edge -->
-        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p">shortEdges</item>
     </style>
-    
-    <!-- Splash screen theme (optional) -->
-    <style name="Theme.Apo.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#0F0F0F</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
-        <item name="postSplashScreenTheme">@style/Theme.Apo</item>
-    </style>
-    
+
+    <color name="orange_primary">#FF6600</color>
+    <color name="orange_dark">#FF4400</color>
+    <color name="gray_secondary">#4D4D4D</color>
+    <color name="gray_dark">#333333</color>
+    <color name="white">#FFFFFF</color>
+    <color name="black">#0F0F0F</color>
 </resources>

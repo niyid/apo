@@ -1,14 +1,4 @@
 <resources>
-    <string-array name="daynight_values">
-        <item>AUTO</item>
-        <item>DAY</item>
-        <item>NIGHT</item>
-    </string-array>
-
-    <string-array name="themes_values">
-        <item>Classic</item>
-        <item>Oled</item>
-    </string-array>
 
     <string-array name="currency" translatable="false">
         <item>EUR</item>
