@@ -49,8 +49,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Apo"
         android:hardwareAccelerated="true"
-        android:largeHeap="true"
-        tools:targetApi="33">
+        android:largeHeap="true"> 
         
         <!-- Main Activity - Monero Wallet -->
         <activity

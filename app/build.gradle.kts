@@ -16,13 +16,28 @@ android {
         applicationId = "com.techducat.apo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "0.0.4"
         
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        resourceConfigurations += listOf(
+            "en",     // English
+            "es",     // Spanish
+            "fr",     // French
+            "de",     // German
+            "it",     // Italian
+            "pt",     // Portuguese
+            "ja",     // Japanese
+            "ko",     // Korean
+            "zh",     // Chinese
+            "ar",     // Arabic
+            "ru",     // Russian
+            // Add any other languages your app actually supports
+        )
         
         ndk {
-            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+            abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
         }
     }
 
@@ -60,9 +75,19 @@ android {
         }
     }    
     
+    signingConfigs {
+        create("release") {
+            storeFile = file(project.findProperty("KEYSTORE") as String? ?: "keystore.jks")
+            storePassword = project.findProperty("STORE_PASSWORD") as String?
+            keyAlias = project.findProperty("KEY_ALIAS") as String?
+            keyPassword = project.findProperty("KEY_PASSWORD") as String?
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -73,10 +98,11 @@ android {
         }
     }
     
-    // Updated packaging configuration for Monerujo
+    // Updated packaging configuration for Monerujo and 16KB page size support
     packaging {
         // For .so files (native libraries)
         jniLibs {
+            useLegacyPackaging = false  // CRITICAL: Ensures proper alignment for 16KB pages
             pickFirsts += "**/libc++_shared.so"
             pickFirsts += "**/libjsc.so"
             pickFirsts += "**/libmonerujo.so"  // Add Monerujo library

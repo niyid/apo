@@ -55,3 +55,29 @@
     public static *** v(...);
     public static *** i(...);
 }
+
+# gRPC Netty - Ignore BlockHound integration (development tool)
+-dontwarn reactor.blockhound.integration.BlockHoundIntegration
+-dontwarn io.grpc.netty.shaded.io.netty.util.internal.Hidden$NettyBlockHoundIntegration
+
+# gRPC - Keep runtime classes
+-keep class io.grpc.** { *; }
+-keepclassmembers class io.grpc.** { *; }
+-dontwarn io.grpc.**
+
+# gRPC Netty Shaded
+-keep class io.grpc.netty.shaded.** { *; }
+-dontwarn io.grpc.netty.shaded.**
+
+# Protobuf
+-keep class com.google.protobuf.** { *; }
+-keep class * extends com.google.protobuf.GeneratedMessageLite { *; }
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite {
+    <fields>;
+    <methods>;
+}
+-dontwarn com.google.protobuf.**
+
+# gRPC stub classes (auto-generated)
+-keep class **.*Grpc { *; }
+-keep class **.*Stub { *; }
