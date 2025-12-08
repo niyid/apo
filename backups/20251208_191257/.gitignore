@@ -97,6 +97,3 @@ wallets/
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# API Keys
-gradle.properties

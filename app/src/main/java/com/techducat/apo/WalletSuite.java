@@ -279,7 +279,78 @@ public class WalletSuite {
     public void rescanBlockchain() {
        Log.i(TAG, "Public rescanBlockchain() called from UI");
        triggerRescan();
-   }    
+   }
+
+    /**
+     * Get wallet view key (secret key for viewing transactions)
+     * This key allows viewing all incoming transactions but cannot spend funds
+     */
+    public String getViewKey() {
+        if (!isInitialized || wallet == null) {
+            Log.w(TAG, "Cannot get view key - wallet not initialized");
+            return "";
+        }
+        
+        try {
+            String secretViewKey = wallet.getSecretViewKey();
+            if (secretViewKey == null || secretViewKey.isEmpty()) {
+                Log.w(TAG, "View key is null or empty");
+                return "";
+            }
+            return secretViewKey;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting view key", e);
+            return "";
+        }
+    }
+
+    /**
+     * Get wallet spend key (secret key for spending funds)
+     * WARNING: This key grants full control over the wallet funds
+     * Must be kept absolutely secret
+     */
+    public String getSpendKey() {
+        if (!isInitialized || wallet == null) {
+            Log.w(TAG, "Cannot get spend key - wallet not initialized");
+            return "";
+        }
+        
+        try {
+            String secretSpendKey = wallet.getSecretSpendKey();
+            if (secretSpendKey == null || secretSpendKey.isEmpty()) {
+                Log.w(TAG, "Spend key is null or empty");
+                return "";
+            }
+            return secretSpendKey;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting spend key", e);
+            return "";
+        }
+    }
+
+    /**
+     * Get wallet seed phrase (mnemonic)
+     * This is the human-readable backup of the wallet
+     * WARNING: Anyone with this seed can fully restore and control the wallet
+     */
+    public String getSeed() {
+        if (!isInitialized || wallet == null) {
+            Log.w(TAG, "Cannot get seed - wallet not initialized");
+            return "";
+        }
+        
+        try {
+            String seed = wallet.getSeed();
+            if (seed == null || seed.isEmpty()) {
+                Log.w(TAG, "Seed is null or empty");
+                return "";
+            }
+            return seed;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting seed", e);
+            return "";
+        }
+    }
     
     public void close() {
         Log.i(TAG, "=== SHUTDOWN INITIATED ===");

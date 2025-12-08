@@ -36,11 +36,109 @@ import com.m2049r.xmrwallet.model.TransactionInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.net.HttpURLConnection
+import java.net.URL
+import java.io.OutputStreamWriter
+import org.json.JSONObject
+
 import java.util.*
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 // ============================================================================
 // MAIN ACTIVITY
 // ============================================================================
+
+
+// ============================================================================
+// CHANGENOW SWAP SERVICE
+// ============================================================================
+
+class ChangeNowSwapService {
+    companion object {
+        private const val BASE_URL = "https://api.changenow.io/v2"
+        
+        // FIXED: Secure API key handling
+        private val API_KEY: String by lazy {
+            try {
+                BuildConfig.CHANGENOW_API_KEY.takeIf { it.isNotBlank() }
+                    ?: throw IllegalStateException(
+                        "ChangeNOW API key not configured. " +
+                        "Add CHANGENOW_API_KEY to your BuildConfig in build.gradle.kts"
+                    )
+            } catch (e: Exception) {
+                throw IllegalStateException(
+                    "ChangeNOW API key not configured. " +
+                    "Add CHANGENOW_API_KEY to your BuildConfig in build.gradle.kts",
+                    e
+                )
+            }
+        }
+        
+        fun isConfigured(): Boolean = try {
+            API_KEY.isNotBlank()
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    data class Currency(val ticker: String, val name: String, val isAvailable: Boolean)
+    data class ExchangeEstimate(val fromCurrency: String, val toCurrency: String, val fromAmount: Double, val estimatedAmount: Double)
+    data class ExchangeStatus(val id: String, val status: String, val payinAddress: String, val payoutAddress: String, val fromCurrency: String, val toCurrency: String)
+    
+    suspend fun getEstimate(fromCurrency: String, toCurrency: String, amount: Double): Result<ExchangeEstimate> = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("$BASE_URL/exchange/estimated-amount?fromCurrency=$fromCurrency&toCurrency=$toCurrency&fromAmount=$amount&flow=standard&type=direct")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("x-changenow-api-key", API_KEY)
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(response)
+                Result.success(ExchangeEstimate(fromCurrency, toCurrency, amount, json.getDouble("toAmount")))
+            } else {
+                Result.failure(Exception("HTTP error: $responseCode"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    suspend fun createExchange(fromCurrency: String, toCurrency: String, fromAmount: Double, toAddress: String, refundAddress: String? = null): Result<ExchangeStatus> = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("$BASE_URL/exchange")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("x-changenow-api-key", API_KEY)
+            connection.doOutput = true
+            val requestBody = JSONObject().apply {
+                put("fromCurrency", fromCurrency)
+                put("toCurrency", toCurrency)
+                put("fromAmount", fromAmount)
+                put("address", toAddress)
+                put("flow", "standard")
+                refundAddress?.let { put("refundAddress", it) }
+            }
+            val writer = OutputStreamWriter(connection.outputStream)
+            writer.write(requestBody.toString())
+            writer.flush()
+            writer.close()
+            val responseCode = connection.responseCode
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(response)
+                Result.success(ExchangeStatus(json.getString("id"), json.getString("status"), json.getString("payinAddress"), json.getString("payoutAddress"), json.getString("fromCurrency"), json.getString("toCurrency")))
+            } else {
+                Result.failure(Exception("HTTP error: $responseCode"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
+
 
 class MoneroWalletActivity : ComponentActivity() {
     private lateinit var walletSuite: WalletSuite
@@ -172,6 +270,13 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
                     icon = { Icon(Icons.Default.Settings, stringResource(R.string.nav_settings)) },
                     label = { Text(stringResource(R.string.nav_settings)) }
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 },
+                    icon = { Icon(Icons.Default.SwapHoriz, stringResource(R.string.nav_exchange)) },
+                    label = { Text(stringResource(R.string.nav_exchange)) },
+                    enabled = ChangeNowSwapService.isConfigured()
+                )
             }
         }
     ) { padding ->
@@ -182,7 +287,8 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
                     walletHeight, daemonHeight,
                     { walletSuite.triggerImmediateSync() },
                     { showReceiveDialog = true },
-                    { selectedTab = 1 }
+                    { selectedTab = 1 },
+                    { selectedTab = 4 } // FIXED: Add exchange callback
                 )
                 1 -> SendScreen(
                     walletSuite, unlockedBalance,
@@ -203,12 +309,224 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
                 )
                 2 -> HistoryScreen(walletSuite)
                 3 -> SettingsScreen(walletSuite, walletAddress)
+                4 -> ExchangeScreen(walletSuite, walletAddress, unlockedBalance)
             }
         }
     }
     
     if (showReceiveDialog) {
         ReceiveDialog(walletAddress) { showReceiveDialog = false }
+    }
+}
+
+@Composable
+fun ExportKeysDialog(
+    walletSuite: WalletSuite,
+    onDismiss: () -> Unit
+) {
+    val clipboardManager = LocalClipboardManager.current
+    var viewKeyCopied by remember { mutableStateOf(false) }
+    var spendKeyCopied by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    
+    // Get actual keys from wallet
+    val viewKey = remember { walletSuite.viewKey }
+    val spendKey = remember { walletSuite.spendKey }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { 
+            Text(
+                text = stringResource(R.string.export_keys_dialog_title),
+                fontWeight = FontWeight.Bold
+            ) 
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFFF9800),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.export_keys_warning),
+                        color = Color(0xFFFF9800),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+                
+                Text(
+                    text = stringResource(R.string.export_keys_info),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                
+                KeyDisplayCard(
+                    label = stringResource(R.string.export_keys_view_key_label),
+                    keyValue = viewKey,
+                    isCopied = viewKeyCopied,
+                    onCopy = {
+                        clipboardManager.setText(AnnotatedString(viewKey))
+                        viewKeyCopied = true
+                    }
+                )
+                
+                KeyDisplayCard(
+                    label = stringResource(R.string.export_keys_spend_key_label),
+                    keyValue = spendKey,
+                    isCopied = spendKeyCopied,
+                    onCopy = {
+                        clipboardManager.setText(AnnotatedString(spendKey))
+                        spendKeyCopied = true
+                    }
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text(text = stringResource(R.string.dialog_close))
+            }
+        }
+    )
+    
+    LaunchedEffect(viewKeyCopied, spendKeyCopied) {
+        if (viewKeyCopied) {
+            delay(2000)
+            viewKeyCopied = false
+        }
+        if (spendKeyCopied) {
+            delay(2000)
+            spendKeyCopied = false
+        }
+    }
+}
+
+@Composable
+fun KeyDisplayCard(
+    label: String,
+    keyValue: String,
+    isCopied: Boolean,
+    onCopy: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (keyValue.length > 40) 
+                        "${keyValue.take(20)}...${keyValue.takeLast(20)}" 
+                    else keyValue,
+                    fontSize = 10.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onCopy) {
+                    Icon(
+                        if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        contentDescription = stringResource(R.string.action_copy),
+                        tint = if (isCopied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SecuritySettingsDialog(onDismiss: () -> Unit) {
+    var biometricEnabled by remember { mutableStateOf(false) }
+    var pinEnabled by remember { mutableStateOf(false) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { 
+            Text(
+                text = stringResource(R.string.security_title),
+                fontWeight = FontWeight.Bold
+            ) 
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                SecurityOption(
+                    title = stringResource(R.string.security_biometric_title),
+                    subtitle = stringResource(R.string.security_biometric_subtitle),
+                    checked = biometricEnabled,
+                    onCheckedChange = { biometricEnabled = it }
+                )
+                
+                SecurityOption(
+                    title = stringResource(R.string.security_pin_title),
+                    subtitle = stringResource(R.string.security_pin_subtitle),
+                    checked = pinEnabled,
+                    onCheckedChange = { pinEnabled = it }
+                )
+                
+                Text(
+                    text = "Note: Full implementation requires androidx.biometric library and proper setup",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text(text = stringResource(R.string.dialog_close))
+            }
+        }
+    )
+}
+
+@Composable
+fun SecurityOption(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = subtitle,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
 
@@ -270,7 +588,8 @@ fun HomeScreen(
     daemonHeight: Long,
     onRefresh: () -> Unit,
     onReceiveClick: () -> Unit,
-    onSendClick: () -> Unit
+    onSendClick: () -> Unit,
+    onExchangeClick: () -> Unit = {} // NEW PARAMETER
 ) {
     val balanceXMR = WalletSuite.convertAtomicToXmr(balance)
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance)
@@ -385,7 +704,7 @@ fun HomeScreen(
                 )
                 QuickActionButton(
                     Icons.Default.SwapHoriz, stringResource(R.string.action_exchange),
-                    Modifier.weight(1f), {}, Color(0xFF9C27B0)
+                    Modifier.weight(1f), onExchangeClick, Color(0xFF9C27B0) // FIXED
                 )
             }
         }
@@ -550,7 +869,15 @@ fun SendScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     trailingIcon = {
-                        IconButton(onClick = {}) {
+                        IconButton(onClick = { 
+                            // Launch QR scanner (requires implementation)
+                            scope.launch {
+                                snackbarHost.showSnackbar(
+                                    "QR Scanner not yet implemented. Please enter address manually.",
+                                    duration = SnackbarDuration.Short
+                                )
+                            }
+                        }) {
                             Icon(Icons.Default.QrCodeScanner, stringResource(R.string.send_scan_qr))
                         }
                     },
@@ -1205,6 +1532,179 @@ fun TransactionCard(transaction: Transaction) {
     }
 }
 
+
+// ============================================================================
+// EXCHANGE SCREEN
+// ============================================================================
+
+@Composable
+fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBalance: Long) {
+    
+    // Check if Exchange is available
+    if (!ChangeNowSwapService.isConfigured()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.padding(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+                Text(
+                    text = stringResource(R.string.error_exchange_api_key),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "Add changenow.api.key to gradle.properties",
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                )
+            }
+        }
+        return
+    }
+    
+    val changeNowService = remember { ChangeNowSwapService() }
+    val scope = rememberCoroutineScope()
+    val snackbarHost = remember { SnackbarHostState() }
+    
+    // Check if API is configured
+    val isApiConfigured = remember { ChangeNowSwapService.isConfigured() }
+    
+    var fromCurrency by remember { mutableStateOf("xmr") }
+    var toCurrency by remember { mutableStateOf("btc") }
+    var fromAmount by remember { mutableStateOf("") }
+    var estimatedAmount by remember { mutableStateOf<Double?>(null) }
+    var toAddress by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var exchangeStatus by remember { mutableStateOf<ChangeNowSwapService.ExchangeStatus?>(null) }
+    val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance)
+    
+    // Show warning if API not configured
+    if (!isApiConfigured) {
+        LaunchedEffect(Unit) {
+            snackbarHost.showSnackbar(
+                "ChangeNOW API key not configured. Exchange functionality limited.",
+                duration = SnackbarDuration.Long
+            )
+        }
+    }
+    
+    LaunchedEffect(fromAmount, fromCurrency, toCurrency) {
+        if (fromAmount.isNotEmpty()) {
+            val amount = fromAmount.toDoubleOrNull()
+            if (amount != null && amount > 0) {
+                delay(500)
+                isLoading = true
+                changeNowService.getEstimate(fromCurrency, toCurrency, amount).onSuccess { estimate ->
+                    estimatedAmount = estimate.estimatedAmount
+                }.onFailure { estimatedAmount = null }
+                isLoading = false
+            }
+        } else { estimatedAmount = null }
+    }
+    
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item { Text(text = "Exchange", fontSize = 28.sp, fontWeight = FontWeight.Bold) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Available XMR", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
+                            Text("$unlockedXMR XMR", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                        }
+                        Icon(Icons.Default.SwapHoriz, null, tint = Color(0xFF9C27B0).copy(0.3f), modifier = Modifier.size(48.dp))
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("From", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(fromCurrency.uppercase(), fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            OutlinedTextField(value = fromAmount, onValueChange = { fromAmount = it }, modifier = Modifier.weight(2f), singleLine = true, placeholder = { Text("0.0") },
+                                trailingIcon = { if (fromCurrency == "xmr") { TextButton(onClick = { fromAmount = unlockedXMR }) { Text("MAX", fontWeight = FontWeight.Bold, fontSize = 12.sp) } } }
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    IconButton(onClick = { val t = fromCurrency; fromCurrency = toCurrency; toCurrency = t; fromAmount = ""; estimatedAmount = null },
+                        modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary)) {
+                        Icon(Icons.Default.SwapVert, null, tint = Color.White)
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("To", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(toCurrency.uppercase(), fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Box(modifier = Modifier.weight(2f).height(56.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                                if (isLoading) { CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp) }
+                                else { Text(text = estimatedAmount?.let { "≈ %.6f".format(it) } ?: "0.0", fontSize = 16.sp, fontWeight = FontWeight.Medium) }
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                OutlinedTextField(value = toAddress, onValueChange = { toAddress = it }, label = { Text("Recipient ${toCurrency.uppercase()} Address") },
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), maxLines = 3)
+            }
+            item {
+                Button(onClick = {
+                    scope.launch {
+                        isLoading = true
+                        changeNowService.createExchange(fromCurrency, toCurrency, fromAmount.toDoubleOrNull() ?: 0.0, toAddress, if (fromCurrency == "xmr") walletAddress else null).onSuccess { status ->
+                            exchangeStatus = status
+                            snackbarHost.showSnackbar("Exchange created! Send to: ${status.payinAddress}")
+                        }.onFailure { snackbarHost.showSnackbar("Error: ${it.message}") }
+                        isLoading = false
+                    }
+                }, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp),
+                    enabled = !isLoading && estimatedAmount != null && toAddress.isNotEmpty()) {
+                    Icon(Icons.Default.SwapHoriz, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Exchange", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            exchangeStatus?.let { status ->
+                item {
+                    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Exchange Status", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("Status: ${status.status.uppercase()}", fontWeight = FontWeight.SemiBold)
+                            Text("Send to: ${status.payinAddress}", fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+        }
+        SnackbarHost(hostState = snackbarHost, modifier = Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+
 // ============================================================================
 // SETTINGS SCREEN
 // ============================================================================
@@ -1214,10 +1714,13 @@ fun SettingsScreen(
     walletSuite: WalletSuite,
     walletAddress: String
 ) {
+    // ALL STATE VARIABLES - FIXED
     var showRescanDialog by remember { mutableStateOf(false) }
     var showSeedDialog by remember { mutableStateOf(false) }
     var showNodeDialog by remember { mutableStateOf(false) }
     var showTxSearchDialog by remember { mutableStateOf(false) }
+    var showExportKeysDialog by remember { mutableStateOf(false) }  // ADDED
+    var showSecurityDialog by remember { mutableStateOf(false) }     // ADDED
     var rescanProgress by remember { mutableStateOf(0.0) }
     var isRescanning by remember { mutableStateOf(false) }
     
@@ -1371,7 +1874,7 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_export_keys),
                 subtitle = stringResource(R.string.settings_export_keys_subtitle),
                 icon = Icons.Default.VpnKey,
-                onClick = { /* Export keys */ }
+                onClick = { showExportKeysDialog = true } // FIXED
             )
         }
         
@@ -1427,12 +1930,12 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_security),
                 subtitle = stringResource(R.string.settings_security_subtitle),
                 icon = Icons.Default.Security,
-                onClick = { /* Security settings */ }
+                onClick = { showSecurityDialog = true } // FIXED
             )
         }
     }
     
-    // Dialogs
+    // ALL DIALOGS
     if (showRescanDialog) {
         RescanDialog(
             onConfirm = {
@@ -1445,7 +1948,10 @@ fun SettingsScreen(
     }
     
     if (showSeedDialog) {
-        SeedPhraseDialog(onDismiss = { showSeedDialog = false })
+        SeedPhraseDialog(
+            walletSuite = walletSuite,
+            onDismiss = { showSeedDialog = false }
+        )
     }
     
     if (showNodeDialog) {
@@ -1459,6 +1965,19 @@ fun SettingsScreen(
         TransactionSearchDialog(
             walletSuite = walletSuite,
             onDismiss = { showTxSearchDialog = false }
+        )
+    }
+    
+    if (showExportKeysDialog) {
+        ExportKeysDialog(
+            walletSuite = walletSuite,
+            onDismiss = { showExportKeysDialog = false }
+        )
+    }
+    
+    if (showSecurityDialog) {
+        SecuritySettingsDialog(
+            onDismiss = { showSecurityDialog = false }
         )
     }
 }
@@ -1575,7 +2094,10 @@ fun RescanDialog(
 }
 
 @Composable
-fun SeedPhraseDialog(onDismiss: () -> Unit) {
+fun SeedPhraseDialog(
+    walletSuite: WalletSuite,
+    onDismiss: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { 
@@ -1613,13 +2135,54 @@ fun SeedPhraseDialog(onDismiss: () -> Unit) {
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "[Seed phrase would be displayed here - implement wallet.getSeed() method]",
+                    Column(
                         modifier = Modifier.padding(12.dp),
-                        fontSize = 12.sp,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val seedPhrase = remember { 
+                            try {
+                                walletSuite.seed.takeIf { it.isNotEmpty() } 
+                                    ?: "Seed not available"
+                            } catch (e: Exception) {
+                                "Error retrieving seed: ${e.message}"
+                            }
+                        }
+                        
+                        val clipboardManager = LocalClipboardManager.current
+                        var seedCopied by remember { mutableStateOf(false) }
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = seedPhrase,
+                                fontSize = 12.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                modifier = Modifier.weight(1f)
+                            )
+                            
+                            IconButton(onClick = {
+                                clipboardManager.setText(AnnotatedString(seedPhrase))
+                                seedCopied = true
+                            }) {
+                                Icon(
+                                    if (seedCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                    contentDescription = stringResource(R.string.action_copy),
+                                    tint = if (seedCopied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        
+                        LaunchedEffect(seedCopied) {
+                            if (seedCopied) {
+                                delay(2000)
+                                seedCopied = false
+                            }
+                        }
+                    }
                 }
             }
         },
