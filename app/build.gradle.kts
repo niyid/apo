@@ -16,8 +16,8 @@ android {
         applicationId = "com.techducat.apo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.0.4"
+        versionCode = 5
+        versionName = "0.0.5"
         
         buildConfigField("String", "CHANGENOW_API_KEY", "\"${project.findProperty("changenow.api.key") ?: ""}\"")
         
@@ -56,6 +56,7 @@ android {
             "AutoboxingStateCreation"
         )
         abortOnError = false
+        checkDependencies = false
     }
 
     packaging.resources {
