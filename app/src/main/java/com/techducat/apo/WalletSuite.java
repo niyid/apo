@@ -914,19 +914,21 @@ public class WalletSuite {
             this.unlockedBalance.set(unlockedBalance);
             
             // Notify balance callback
-            if (rescanBalanceCallback != null) {
-                mainHandler.post(() -> rescanBalanceCallback.onBalanceUpdated(balance, unlockedBalance));
+            final RescanBalanceCallback callback = rescanBalanceCallback;
+            if (callback != null) {
+                mainHandler.post(() -> callback.onBalanceUpdated(balance, unlockedBalance));
             }
             
-            // Notify status listener
-            if (statusListener != null) {
+            // Notify status listener - CRITICAL: Capture reference before use
+            final WalletStatusListener listener = statusListener;
+            if (listener != null) {
                 final long currentHeight = height;
                 final double finalProgress = progress;
                 final long finalBalance = balance;
-                final long finalUnlocked = unlockedBalance;
+                final long finalUnlockedBalance = unlockedBalance;
                 mainHandler.post(() -> {
-                    statusListener.onSyncProgress(currentHeight, 0, daemonHeight, finalProgress);
-                    statusListener.onBalanceUpdated(finalBalance, finalUnlocked);
+                    listener.onSyncProgress(currentHeight, 0, daemonHeight, finalProgress);
+                    listener.onBalanceUpdated(finalBalance, finalUnlockedBalance);
                 });
             }
             
