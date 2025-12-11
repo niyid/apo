@@ -168,6 +168,11 @@ public class WalletSuite {
         void onBalanceUpdated(long balance, long unlockedBalance);
     }
     
+    public interface SeedCallback {
+        void onSuccess(String seed);
+        void onError(String error);
+    }    
+    
     public static class SyncStatus {
         public final boolean syncing;
         public final long walletHeight;
@@ -327,6 +332,41 @@ public class WalletSuite {
             return "";
         }
     }
+    
+    
+    /**
+     * Async version of getSeed() - safe to call from UI thread
+     */    
+    public void getSeedAsync(SeedCallback callback) {
+        if (!isInitialized || wallet == null) {
+            mainHandler.post(() -> callback.onError("Wallet not initialized"));
+            return;
+        }
+        
+        WalletState state = currentState.get();
+        if (state == WalletState.RESCANNING || state == WalletState.CLOSING) {
+            mainHandler.post(() -> callback.onError("Wallet busy: " + state));
+            return;
+        }
+        
+        executorService.execute(() -> {
+            synchronized (walletLock) {
+                try {
+                    String seed = wallet.getSeed();
+                    if (seed == null || seed.isEmpty()) {
+                        mainHandler.post(() -> callback.onError("Seed not available"));
+                    } else {
+                        final String finalSeed = seed;
+                        mainHandler.post(() -> callback.onSuccess(finalSeed));
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error getting seed", e);
+                    final String error = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                    mainHandler.post(() -> callback.onError(error));
+                }
+            }
+        });
+    }    
 
     /**
      * Get wallet seed phrase (mnemonic)
@@ -339,16 +379,25 @@ public class WalletSuite {
             return "";
         }
         
-        try {
-            String seed = wallet.getSeed();
-            if (seed == null || seed.isEmpty()) {
-                Log.w(TAG, "Seed is null or empty");
+        // Check if we're in a state that allows wallet access
+        WalletState state = currentState.get();
+        if (state == WalletState.RESCANNING || state == WalletState.CLOSING) {
+            Log.w(TAG, "Cannot get seed - wallet state: " + state);
+            return "";
+        }
+        
+        synchronized (walletLock) {
+            try {
+                String seed = wallet.getSeed();
+                if (seed == null || seed.isEmpty()) {
+                    Log.w(TAG, "Seed is null or empty");
+                    return "";
+                }
+                return seed;
+            } catch (Exception e) {
+                Log.e(TAG, "Error getting seed", e);
                 return "";
             }
-            return seed;
-        } catch (Exception e) {
-            Log.e(TAG, "Error getting seed", e);
-            return "";
         }
     }
     
@@ -913,10 +962,10 @@ public class WalletSuite {
             this.balance.set(balance);
             this.unlockedBalance.set(unlockedBalance);
             
-            // Notify balance callback
-            final RescanBalanceCallback callback = rescanBalanceCallback;
-            if (callback != null) {
-                mainHandler.post(() -> callback.onBalanceUpdated(balance, unlockedBalance));
+            // Notify balance callback - CRITICAL: Capture reference before use
+            final RescanBalanceCallback balanceCallback = rescanBalanceCallback;
+            if (balanceCallback != null) {
+                mainHandler.post(() -> balanceCallback.onBalanceUpdated(balance, unlockedBalance));
             }
             
             // Notify status listener - CRITICAL: Capture reference before use
@@ -949,14 +998,14 @@ public class WalletSuite {
                 startPeriodicSync();
                 
                 // Notify rescan callback of completion
-                if (rescanCallback != null) {
-                    final RescanCallback callback = rescanCallback;
+                final RescanCallback completionCallback = rescanCallback;
+                if (completionCallback != null) {
                     rescanCallback = null;
                     final long finalBalance = balance;
                     final long finalUnlockedBalance = unlockedBalance;
                     mainHandler.post(() -> {
                         Log.d(TAG, "Invoking rescan callback with balance: " + convertAtomicToXmr(finalUnlockedBalance) + " XMR");
-                        callback.onComplete(finalBalance, finalUnlockedBalance);
+                        completionCallback.onComplete(finalBalance, finalUnlockedBalance);
                     });
                 }
                 
@@ -975,11 +1024,11 @@ public class WalletSuite {
             startPeriodicSync();
             rescanBalanceCallback = null;
             
-            if (rescanCallback != null) {
-                final RescanCallback callback = rescanCallback;
+            final RescanCallback errorCallback = rescanCallback;
+            if (errorCallback != null) {
                 rescanCallback = null;
                 final String error = e.getMessage() != null ? e.getMessage() : "Unknown error";
-                mainHandler.post(() -> callback.onError("Rescan monitoring failed: " + error));
+                mainHandler.post(() -> errorCallback.onError("Rescan monitoring failed: " + error));
             }
         }
     }

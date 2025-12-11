@@ -2098,6 +2098,25 @@ fun SeedPhraseDialog(
     walletSuite: WalletSuite,
     onDismiss: () -> Unit
 ) {
+    var seedPhrase by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    
+    // Load seed phrase asynchronously using the safe async method
+    LaunchedEffect(Unit) {
+        walletSuite.getSeedAsync(object : WalletSuite.SeedCallback {
+            override fun onSuccess(seed: String) {
+                seedPhrase = seed
+                isLoading = false
+            }
+            
+            override fun onError(errorMsg: String) {
+                error = errorMsg
+                isLoading = false
+            }
+        })
+    }
+    
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { 
@@ -2139,40 +2158,59 @@ fun SeedPhraseDialog(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val seedPhrase = remember { 
-                            try {
-                                walletSuite.seed.takeIf { it.isNotEmpty() } 
-                                    ?: "Seed not available"
-                            } catch (e: Exception) {
-                                "Error retrieving seed: ${e.message}"
-                            }
-                        }
-                        
                         val clipboardManager = LocalClipboardManager.current
                         var seedCopied by remember { mutableStateOf(false) }
                         
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = seedPhrase,
-                                fontSize = 12.sp,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                                modifier = Modifier.weight(1f)
-                            )
-                            
-                            IconButton(onClick = {
-                                clipboardManager.setText(AnnotatedString(seedPhrase))
-                                seedCopied = true
-                            }) {
-                                Icon(
-                                    if (seedCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                    contentDescription = stringResource(R.string.action_copy),
-                                    tint = if (seedCopied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                        when {
+                            isLoading -> {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            }
+                            error != null -> {
+                                Text(
+                                    text = error ?: "Unknown error",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.fillMaxWidth().padding(8.dp)
                                 )
+                            }
+                            seedPhrase != null -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = seedPhrase ?: "",
+                                        fontSize = 12.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    
+                                    IconButton(
+                                        onClick = {
+                                            seedPhrase?.let {
+                                                clipboardManager.setText(AnnotatedString(it))
+                                                seedCopied = true
+                                            }
+                                        },
+                                        enabled = seedPhrase != null
+                                    ) {
+                                        Icon(
+                                            if (seedCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                                            contentDescription = stringResource(R.string.action_copy),
+                                            tint = if (seedCopied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                             }
                         }
                         
