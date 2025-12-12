@@ -42,8 +42,43 @@ import java.io.OutputStreamWriter
 import org.json.JSONObject
 
 import java.util.*
+import android.util.Log
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+
+fun generateQRCode(content: String, size: Int = 512): Bitmap? {
+    return try {
+        val hints = hashMapOf<EncodeHintType, Any>()
+        hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.M
+        hints[EncodeHintType.MARGIN] = 1
+
+        val writer = QRCodeWriter()
+        val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size, hints)
+        
+        val width = bitMatrix.width
+        val height = bitMatrix.height
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+        
+        for (x in 0 until width) {
+            for (y in 0 until height) {
+                bitmap.setPixel(x, y, if (bitMatrix[x, y]) AndroidColor.BLACK else AndroidColor.WHITE)
+            }
+        }
+        
+        bitmap
+    } catch (e: Exception) {
+        Log.e("QRCode", "Failed to generate QR code", e)
+        null
+    }
+}
+
 
 // ============================================================================
 // MAIN ACTIVITY
@@ -1035,6 +1070,11 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     
+    // Generate QR code
+    val qrBitmap = remember(address) {
+        generateQRCode(address, 512)
+    }
+    
     LaunchedEffect(copied) {
         if (copied) {
             delay(2000)
@@ -1062,12 +1102,44 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // QR Code placeholder
-                        Box(
-                            modifier = Modifier.size(200.dp).background(Color.White, RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(stringResource(R.string.qr_code_placeholder), color = Color.Gray)
+                        // QR Code display
+                        if (qrBitmap != null) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.White,
+                                modifier = Modifier.size(200.dp)
+                            ) {
+                                Image(
+                                    bitmap = qrBitmap.asImageBitmap(),
+                                    contentDescription = stringResource(R.string.qr_code_placeholder),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(8.dp)
+                                )
+                            }
+                        } else {
+                            // Fallback if QR generation fails
+                            Box(
+                                modifier = Modifier
+                                    .size(200.dp)
+                                    .background(Color.White, RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(32.dp),
+                                        strokeWidth = 3.dp
+                                    )
+                                    Text(
+                                        "Generating QR Code...",
+                                        color = Color.Gray,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
                         }
                         
                         Text(
@@ -1086,7 +1158,10 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(if (copied) Icons.Default.Check else Icons.Default.ContentCopy, null)
+                    Icon(
+                        if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        null
+                    )
                     Spacer(Modifier.width(8.dp))
                     Text(if (copied) stringResource(R.string.status_copied) else stringResource(R.string.receive_copy_address))
                 }

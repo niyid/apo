@@ -81,3 +81,7 @@
 # gRPC stub classes (auto-generated)
 -keep class **.*Grpc { *; }
 -keep class **.*Stub { *; }
+
+# ZXing QR Code library
+-keep class com.google.zxing.** { *; }
+-dontwarn com.google.zxing.**

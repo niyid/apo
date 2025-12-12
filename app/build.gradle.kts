@@ -16,8 +16,8 @@ android {
         applicationId = "com.techducat.apo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.0.5"
+        versionCode = 6
+        versionName = "0.0.6"
         
         buildConfigField("String", "CHANGENOW_API_KEY", "\"${project.findProperty("changenow.api.key") ?: ""}\"")
         
@@ -198,7 +198,7 @@ dependencies {
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
     
     // QR Code generation
-    implementation("com.google.zxing:core:3.5.2")        
+    implementation("com.google.zxing:core:3.5.3")        
     
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
