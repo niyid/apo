@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <!-- Sack shadow -->
+    <path
+        android:fillColor="#000000"
+        android:fillAlpha="0.15"
+        android:pathData="M18,56 C18,60 46,60 46,56 Z"/>
+    <!-- Sack body -->
+    <path
+        android:fillColor="#C2A060"
+        android:pathData="M14,18 C14,8 50,8 50,18 L46,56 H18 Z"/>
+    <!-- Fabric folds -->
+    <path
+        android:strokeColor="#A8894D"
+        android:strokeWidth="1.5"
+        android:pathData="M24,22 L22,48 M32,22 L32,50 M40,22 L42,48"/>
+    <!-- Tie string -->
+    <path
+        android:fillColor="#7A4A1E"
+        android:pathData="M18,18 C24,26 40,26 46,18 L46,22 C40,30 24,30 18,22 Z"/>
+</vector>

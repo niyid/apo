@@ -60,4 +60,6 @@
 
     <color name="offForeground">#573059</color>
     <color name="offBackground">#FFF6EF</color>
+    <!-- Splash screen background color (matches your dark theme) -->
+    <color name="splash_background">#0F0F0F</color>
 </resources>

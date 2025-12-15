@@ -12,11 +12,11 @@
         <item name="android:navigationBarColor">@color/black</item>
     </style>
 
-    <!-- Splash Screen Theme (uses basic Theme.AppCompat to avoid splash screen library) -->
+    <!-- Splash Screen Theme (uses splash_background for pre-Android 12) -->
     <style name="Theme.SplashScreen" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="android:windowBackground">@color/orange_primary</item>
-        <item name="android:statusBarColor">@color/orange_primary</item>
-        <item name="android:navigationBarColor">@color/orange_primary</item>
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:statusBarColor">@color/splash_background</item>
+        <item name="android:navigationBarColor">@color/splash_background</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 
@@ -26,4 +26,9 @@
     <color name="gray_dark">#333333</color>
     <color name="white">#FFFFFF</color>
     <color name="black">#0F0F0F</color>
+
+    <!-- Splash Screen Theme for all Android versions -->
+    <style name="Theme.Apo.Splash" parent="Theme.SplashScreen">
+        <!-- Will be overridden by values-v31 for Android 12+ -->
+    </style>
 </resources>

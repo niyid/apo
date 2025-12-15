@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (API 31+) Splash Screen Theme -->
+<resources>
+    <style name="Theme.Apo.Splash" parent="Theme.SplashScreen">
+        <!-- Set the splash screen background color -->
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        
+        <!-- Set the splash screen icon (your animated drawable) -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/apo_sack_anim</item>
+        
+        <!-- Icon animation duration in milliseconds -->
+        <item name="windowSplashScreenAnimationDuration">1000</item>
+        
+        <!-- Set the theme to use after splash -->
+        <item name="postSplashScreenTheme">@style/MyMaterialTheme</item>
+        
+        <!-- Optional: Icon background (transparent to show animation) -->
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+</resources>
