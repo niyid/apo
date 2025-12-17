@@ -16,8 +16,8 @@ android {
         applicationId = "com.techducat.apo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.0.7"
+        versionCode = 9
+        versionName = "0.0.9"
         
         buildConfigField("String", "CHANGENOW_API_KEY", "\"${project.findProperty("changenow.api.key") ?: ""}\"")
         
@@ -105,7 +105,7 @@ android {
     packaging {
         // For .so files (native libraries)
         jniLibs {
-            useLegacyPackaging = false  // CRITICAL: Ensures proper alignment for 16KB pages
+            useLegacyPackaging = false  // CRITICAL: Ensures proper assignment for 16KB pages
             pickFirsts += "**/libc++_shared.so"
             pickFirsts += "**/libjsc.so"
             pickFirsts += "**/libmonerujo.so"  // Add Monerujo library
