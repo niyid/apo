@@ -204,6 +204,22 @@ class MoneroWalletActivity : ComponentActivity() {
             keepSplashOnScreen = false
         }
     }
+    
+    override fun onDestroy() {
+        // CRITICAL FIX: Only close wallet if app is actually finishing
+        // Don't close on configuration changes or temporary activity destruction
+        if (isFinishing) {
+            Log.d("MoneroWallet", "Activity finishing - closing wallet")
+            try {
+                walletSuite.close()
+            } catch (e: Exception) {
+                Log.e("MoneroWallet", "Error closing wallet", e)
+            }
+        } else {
+            Log.d("MoneroWallet", "Activity destroyed but not finishing - keeping wallet open")
+        }
+        super.onDestroy()
+    }
 }
 
 @Composable

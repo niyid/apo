@@ -252,35 +252,78 @@ public class WalletSuite {
     }
 
     private void closeWalletSync() {
+        // CRITICAL: Set state first to stop all operations
         currentState.set(WalletState.CLOSING);
         
-        try {
-            if (wallet != null && isInitialized) {
-                Log.d(TAG, "Closing wallet synchronously");
-                
-                wallet.setListener(null);
-                
-                if (currentWalletPath != null) {
-                    try {
-                        wallet.store(currentWalletPath);
-                        Log.d(TAG, "Wallet persisted before close");
-                    } catch (Exception e) {
-                        Log.w(TAG, "Failed to persist wallet during shutdown", e);
-                    }
-                }
-                
-                wallet.close();
-                Log.d(TAG, "Wallet closed successfully");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error during wallet closure", e);
-        } finally {
-            wallet = null;
-            isInitialized = false;
-            currentWalletPath = null;
+        Log.i(TAG, "=== SAFE WALLET CLOSURE INITIATED ===");
+        
+        // Stop periodic sync immediately
+        stopPeriodicSync();
+        
+        // Cancel any pending sync timeout
+        if (currentSyncTimeout != null) {
+            currentSyncTimeout.cancel(true);
+            currentSyncTimeout = null;
         }
+        
+        // Wait for sync executor to finish current operation
+        syncExecutor.shutdown();
+        try {
+            Log.d(TAG, "Waiting for sync operations to complete...");
+            if (!syncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                Log.w(TAG, "Forcing sync executor shutdown");
+                syncExecutor.shutdownNow();
+                syncExecutor.awaitTermination(2, TimeUnit.SECONDS);
+            }
+            Log.d(TAG, "Sync operations stopped");
+        } catch (InterruptedException e) {
+            Log.w(TAG, "Interrupted while waiting for sync", e);
+            syncExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        
+        // Now safe to close wallet
+        synchronized (walletLock) {
+            try {
+                if (wallet != null && isInitialized) {
+                    Log.d(TAG, "Closing wallet synchronously");
+                    
+                    // Remove listener first
+                    wallet.setListener(null);
+                    
+                    // Store wallet state
+                    if (currentWalletPath != null) {
+                        try {
+                            wallet.store(currentWalletPath);
+                            Log.d(TAG, "Wallet persisted before close");
+                        } catch (Exception e) {
+                            Log.w(TAG, "Failed to persist wallet during shutdown", e);
+                        }
+                    }
+                    
+                    // Small delay to ensure JNI cleanup
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    
+                    // Close wallet
+                    wallet.close();
+                    Log.d(TAG, "Wallet closed successfully");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error during wallet closure", e);
+            } finally {
+                wallet = null;
+                isInitialized = false;
+                currentWalletPath = null;
+            }
+        }
+        
+        Log.i(TAG, "=== SAFE WALLET CLOSURE COMPLETE ===");
     }
-    
+        
     public void rescanBlockchain() {
        Log.i(TAG, "Public rescanBlockchain() called from UI");
        triggerRescan();
