@@ -16,8 +16,8 @@ android {
         applicationId = "com.techducat.apo"
         minSdk = 24
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.0.12"
+        versionCode = 13
+        versionName = "0.0.13"
         
         buildConfigField("String", "CHANGENOW_API_KEY", "\"${project.findProperty("changenow.api.key") ?: ""}\"")
         
