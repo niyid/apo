@@ -52,6 +52,7 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.m2049r.xmrwallet.model.TransactionInfo
+import androidx.compose.ui.semantics.semantics
 
 fun generateQRCode(content: String, size: Int = 512): Bitmap? {
     return try {
@@ -238,6 +239,21 @@ class MoneroWalletActivity : ComponentActivity() {
         val splashScreen = installSplashScreen()
         
         super.onCreate(savedInstanceState)
+        
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStop(owner: LifecycleOwner) {
+                // Persist wallet state when going to background
+                if (!isChangingConfigurations) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        try {
+                            walletSuite.wallet?.store()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to persist wallet", e)
+                        }
+                    }
+                }
+            }
+        })        
         
         // Keep splash screen visible while wallet initializes
         var keepSplashOnScreen = true
