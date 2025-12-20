@@ -38,7 +38,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
-import android.os.StrictMode;
 
 public class WalletSuite {
     private static final String TAG = "WalletSuite";
@@ -82,7 +81,10 @@ public class WalletSuite {
     private volatile String currentWalletPath;
     private final AtomicLong balance = new AtomicLong(0L);
     private final AtomicLong unlockedBalance = new AtomicLong(0L);
-    
+
+    // UI Update Throttling - prevents VSync timeouts
+    private final AtomicLong lastUiUpdateTime = new AtomicLong(0);
+    private static final long UI_UPDATE_THROTTLE_MS = 500; // Max UI update every 500ms    
     private volatile WalletStatusListener statusListener;
     private volatile TransactionListener transactionListener;
     private volatile DaemonConfigCallback daemonConfigCallback;
@@ -615,23 +617,29 @@ public class WalletSuite {
                 @Override
                 public void newBlock(long height) {
                     long currentTime = System.currentTimeMillis();
-                    if (currentTime - lastProgressUpdateTime > 1000) {
-                        lastProgressUpdateTime = currentTime;
-                        
-                        double percentDone = syncEndHeight > syncStartHeight ? 
-                            (100.0 * (height - syncStartHeight) / (syncEndHeight - syncStartHeight)) : 0.0;
-                        
-                        Log.d(TAG, "[SYNC] Block: " + height + " (" + String.format("%.1f", percentDone) + "%)");
-                        
-                        // CRITICAL FIX: Don't update balance during active sync
-                        // The wallet cache is being rebuilt and balance queries return incorrect values
-                        // Only query balance AFTER sync completes
-                        
-                        if (statusListener != null) {
-                            final long currentHeight = height;
-                            final double finalPercent = percentDone;
-                            mainHandler.post(() -> statusListener.onSyncProgress(currentHeight, syncStartHeight, syncEndHeight, finalPercent));
-                        }
+                    
+                    // CRITICAL FIX: Throttle to prevent VSync timeouts
+                    if (currentTime - lastProgressUpdateTime < UI_UPDATE_THROTTLE_MS) {
+                        return; // Skip this update - too frequent
+                    }
+                    
+                    lastProgressUpdateTime = currentTime;
+                    
+                    double percentDone = syncEndHeight > syncStartHeight ? 
+                        (100.0 * (height - syncStartHeight) / (syncEndHeight - syncStartHeight)) : 0.0;
+                    
+                    Log.d(TAG, "[SYNC] Block: " + height + " (" + String.format("%.1f", percentDone) + "%)");
+                    
+                    // CRITICAL FIX: Don't update balance during active sync
+                    // The wallet cache is being rebuilt and balance queries return incorrect values
+                    // Only query balance AFTER sync completes
+                    
+                    if (statusListener != null) {
+                        final long currentHeight = height;
+                        final double finalPercent = percentDone;
+                        // Clear pending updates to prevent queue buildup
+                        mainHandler.removeCallbacksAndMessages(null);
+                        mainHandler.post(() -> statusListener.onSyncProgress(currentHeight, syncStartHeight, syncEndHeight, finalPercent));
                     }
                 }
                 
@@ -698,11 +706,19 @@ public class WalletSuite {
                 Log.d(TAG, "Balance updated - Balance: " + convertAtomicToXmr(bal) + 
                       " XMR, Unlocked: " + convertAtomicToXmr(unl) + " XMR");
                 
-                // Notify listeners on main thread
-                if (statusListener != null) {
-                    final long finalBal = bal;
-                    final long finalUnl = unl;
-                    mainHandler.post(() -> statusListener.onBalanceUpdated(finalBal, finalUnl));
+                // CRITICAL FIX: Throttle UI updates to prevent VSync timeouts
+                long now = System.currentTimeMillis();
+                long lastUpdate = lastUiUpdateTime.get();
+                
+                if (now - lastUpdate >= UI_UPDATE_THROTTLE_MS) {
+                    if (lastUiUpdateTime.compareAndSet(lastUpdate, now)) {
+                        // Notify listeners on main thread
+                        if (statusListener != null) {
+                            final long finalBal = bal;
+                            final long finalUnl = unl;
+                            mainHandler.post(() -> statusListener.onBalanceUpdated(finalBal, finalUnl));
+                        }
+                    }
                 }
             }
         } catch (Exception e) {
@@ -1179,174 +1195,163 @@ public class WalletSuite {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
 
         syncExecutor.execute(() -> {
-            // FIX: Temporarily permit network on this thread for wallet initialization
-            // This is a workaround for the underlying Monero library's DNS lookups
-            StrictMode.ThreadPolicy oldPolicy = StrictMode.getThreadPolicy();
-            StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
-                .permitNetwork()
-                .build());
             try {
-                try {
-                    Log.i(TAG, "=== WALLET INITIALIZATION STARTED ===");
-                    String walletName = walletManager.getWalletName();
-                    Log.d(TAG, "Wallet name: " + walletName);
+                Log.i(TAG, "=== WALLET INITIALIZATION STARTED ===");
+                String walletName = walletManager.getWalletName();
+                Log.d(TAG, "Wallet name: " + walletName);
 
-                    // Step 1: Check for wallet backup on SD card
-                    File sdcardDir = new File(Environment.getExternalStorageDirectory(),
-                            "Android/data/com.bitchat.droid/files");
-                    Log.d(TAG, "Checking SD card directory: " + sdcardDir.getAbsolutePath());
-                    
-                    File backupFile = new File(sdcardDir, walletName);
-                    File backupKeysFile = new File(sdcardDir, walletName + ".keys");
-                    File backupAddressFile = new File(sdcardDir, walletName + ".address.txt");
+                // Step 1: Check for wallet backup on SD card
+                File sdcardDir = new File(Environment.getExternalStorageDirectory(),
+                        "Android/data/com.bitchat.droid/files");
+                Log.d(TAG, "Checking SD card directory: " + sdcardDir.getAbsolutePath());
+                
+                File backupFile = new File(sdcardDir, walletName);
+                File backupKeysFile = new File(sdcardDir, walletName + ".keys");
+                File backupAddressFile = new File(sdcardDir, walletName + ".address.txt");
 
-                    // Step 2: Determine target directory - ORIGINAL PATH MAINTAINED
-                    File dir = context.getDir("wallets", Context.MODE_PRIVATE);
-                    Log.d(TAG, "Wallets directory: " + dir.getAbsolutePath());
-                    if (!dir.exists() && !dir.mkdirs()) {
-                        Log.e(TAG, "CRITICAL: Cannot create wallets directory");
-                        notifyWalletInitialized(false, "Cannot create wallets dir");
-                        future.complete(false);
-                        return;
-                    }
-
-                    String walletPath = new File(dir, walletName).getAbsolutePath();
-                    currentWalletPath = walletPath;
-
-                    // Step 3: Copy wallet from SD card if exists
-                    if (backupFile.exists()) {
-                        Log.i(TAG, "=== RESTORING WALLET FROM SD CARD ===");
-                        try {
-                            File destWalletFile = new File(walletPath);
-                            Files.copy(backupFile.toPath(), destWalletFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                            Log.i(TAG, "✓ Main wallet file copied");
-                            File bakWalletFile = new File(sdcardDir, walletName + ".bak");
-                            Files.move(backupFile.toPath(), bakWalletFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                            Log.i(TAG, "✓ Original wallet file renamed to .bak");
-                        } catch (Exception ex) {
-                            Log.e(TAG, "✗ Wallet copy/rename failed", ex);
-                        }
-
-                        if (backupKeysFile.exists()) {
-                            try {
-                                File destKeysFile = new File(walletPath + ".keys");
-                                Files.copy(backupKeysFile.toPath(), destKeysFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                                File bakKeysFile = new File(sdcardDir, walletName + ".keys.bak");
-                                Files.move(backupKeysFile.toPath(), bakKeysFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                                Log.i(TAG, "✓ Keys file copied and renamed to .bak");
-                            } catch (Exception ex) {
-                                Log.e(TAG, "✗ Keys copy/rename failed", ex);
-                            }
-                        }
-
-                        if (backupAddressFile.exists()) {
-                            try {
-                                File destAddressFile = new File(walletPath + ".address.txt");
-                                Files.copy(backupAddressFile.toPath(), destAddressFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                                File bakAddrFile = new File(sdcardDir, walletName + ".address.txt.bak");
-                                Files.move(backupAddressFile.toPath(), bakAddrFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                                Log.i(TAG, "✓ Address file copied and renamed to .bak");
-                            } catch (Exception ex) {
-                                Log.e(TAG, "✗ Address copy/rename failed", ex);
-                            }
-                        }
-
-                        Log.i(TAG, "=== WALLET RESTORATION COMPLETE ===");
-                    } else {
-                        Log.d(TAG, "No backup found on SD card");
-                    }
-
-                    // Step 4: Open or create wallet
-                    File keysFile = new File(walletPath + ".keys");
-                    Log.d(TAG, "Keys file exists: " + keysFile.exists());
-
-                    if (keysFile.exists()) {
-                        Log.i(TAG, "=== OPENING EXISTING WALLET ===");
-                        wallet = walletManager.openWallet(walletPath);
-                    } else {
-                        Log.i(TAG, "=== CREATING NEW WALLET ===");
-                        wallet = walletManager.createWallet(walletPath);
-                    }
-
-                    if (wallet == null) {
-                        Log.e(TAG, "CRITICAL: Wallet is null after open/create attempt");
-                        notifyWalletInitialized(false, "JNI returned null wallet");
-                        future.complete(false);
-                        return;
-                    }
-
-                    // Step 5: Initialize daemon connection
-                    Log.d(TAG, "=== INITIALIZING DAEMON CONNECTION ===");
-                    try {
-                        Node node = walletManager.createNodeFromConfig();
-                        Log.d(TAG, "Node config: " + node.displayProperties());
-
-                        long handle = wallet.initJ(
-                                node.getAddress(), 0,
-                                node.getUsername(), node.getPassword(),
-                                node.isSsl(), false, ""
-                        );
-                        Log.d(TAG, "initJ handle: " + handle);
-                        if (handle == 0) {
-                            Log.w(TAG, "initJ returned 0, applying fallback daemon setup");
-                            walletManager.setDaemonAddress(node.getAddress());
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Exception during daemon init", e);
-                        walletManager.setDaemonAddress(walletManager.getDaemonAddress());
-                    }
-
-                    // Step 6: Status check
-                    int status = wallet.getStatus();
-                    String statusName = (status < Wallet.Status.values().length)
-                            ? Wallet.Status.values()[status].name() : "UNKNOWN";
-                    Log.d(TAG, "Wallet status: " + statusName + " (" + status + ")");
-                    if (status != Wallet.Status.Status_Ok.ordinal()) {
-                        notifyWalletInitialized(false, "Init failed: " + statusName);
-                        future.complete(false);
-                        return;
-                    }
-
-                    // Step 7: Check read-only flag
-                    boolean isReadOnly = false;
-                    try {
-                        isReadOnly = wallet.isReadOnly();
-                    } catch (Throwable t) {
-                        Log.w(TAG, "Cannot determine read-only state", t);
-                    }
-                    if (isReadOnly) {
-                        Log.w(TAG, "⚠️ Wallet opened in read-only mode");
-                        notifyWalletInitialized(true, "Read-only wallet");
-                    } else {
-                        notifyWalletInitialized(true, "Wallet initialized OK");
-                    }
-
-                    // Step 8: Get metadata
-                    try {
-                        walletAddress = wallet.getAddress();
-                        Log.i(TAG, "Wallet address: " + walletAddress);
-                        Log.d(TAG, "Height=" + wallet.getBlockChainHeight() + 
-                              ", Restore=" + wallet.getRestoreHeight());
-                    } catch (Exception e) {
-                        Log.w(TAG, "Metadata fetch failed", e);
-                    }
-
-                    // Step 9: Start syncing
-                    isInitialized = true;
-                    performSync();
-                    startPeriodicSync();
-
-                    future.complete(true);
-                    Log.i(TAG, "✓ WALLET INITIALIZATION COMPLETE");
-
-                } catch (Exception e) {
-                    Log.e(TAG, "✗ Exception during wallet init", e);
-                    notifyWalletInitialized(false, "Error: " + e.getMessage());
-                    future.completeExceptionally(e);
+                // Step 2: Determine target directory - ORIGINAL PATH MAINTAINED
+                File dir = context.getDir("wallets", Context.MODE_PRIVATE);
+                Log.d(TAG, "Wallets directory: " + dir.getAbsolutePath());
+                if (!dir.exists() && !dir.mkdirs()) {
+                    Log.e(TAG, "CRITICAL: Cannot create wallets directory");
+                    notifyWalletInitialized(false, "Cannot create wallets dir");
+                    future.complete(false);
+                    return;
                 }
-            } finally {
-                // Restore original StrictMode policy
-                StrictMode.setThreadPolicy(oldPolicy);
+
+                String walletPath = new File(dir, walletName).getAbsolutePath();
+                currentWalletPath = walletPath;
+
+                // Step 3: Copy wallet from SD card if exists
+                if (backupFile.exists()) {
+                    Log.i(TAG, "=== RESTORING WALLET FROM SD CARD ===");
+                    try {
+                        File destWalletFile = new File(walletPath);
+                        Files.copy(backupFile.toPath(), destWalletFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        Log.i(TAG, "✓ Main wallet file copied");
+                        File bakWalletFile = new File(sdcardDir, walletName + ".bak");
+                        Files.move(backupFile.toPath(), bakWalletFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        Log.i(TAG, "✓ Original wallet file renamed to .bak");
+                    } catch (Exception ex) {
+                        Log.e(TAG, "✗ Wallet copy/rename failed", ex);
+                    }
+
+                    if (backupKeysFile.exists()) {
+                        try {
+                            File destKeysFile = new File(walletPath + ".keys");
+                            Files.copy(backupKeysFile.toPath(), destKeysFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            File bakKeysFile = new File(sdcardDir, walletName + ".keys.bak");
+                            Files.move(backupKeysFile.toPath(), bakKeysFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            Log.i(TAG, "✓ Keys file copied and renamed to .bak");
+                        } catch (Exception ex) {
+                            Log.e(TAG, "✗ Keys copy/rename failed", ex);
+                        }
+                    }
+
+                    if (backupAddressFile.exists()) {
+                        try {
+                            File destAddressFile = new File(walletPath + ".address.txt");
+                            Files.copy(backupAddressFile.toPath(), destAddressFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            File bakAddrFile = new File(sdcardDir, walletName + ".address.txt.bak");
+                            Files.move(backupAddressFile.toPath(), bakAddrFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                            Log.i(TAG, "✓ Address file copied and renamed to .bak");
+                        } catch (Exception ex) {
+                            Log.e(TAG, "✗ Address copy/rename failed", ex);
+                        }
+                    }
+
+                    Log.i(TAG, "=== WALLET RESTORATION COMPLETE ===");
+                } else {
+                    Log.d(TAG, "No backup found on SD card");
+                }
+
+                // Step 4: Open or create wallet
+                File keysFile = new File(walletPath + ".keys");
+                Log.d(TAG, "Keys file exists: " + keysFile.exists());
+
+                if (keysFile.exists()) {
+                    Log.i(TAG, "=== OPENING EXISTING WALLET ===");
+                    wallet = walletManager.openWallet(walletPath);
+                } else {
+                    Log.i(TAG, "=== CREATING NEW WALLET ===");
+                    wallet = walletManager.createWallet(walletPath);
+                }
+
+                if (wallet == null) {
+                    Log.e(TAG, "CRITICAL: Wallet is null after open/create attempt");
+                    notifyWalletInitialized(false, "JNI returned null wallet");
+                    future.complete(false);
+                    return;
+                }
+
+                // Step 5: Initialize daemon connection
+                Log.d(TAG, "=== INITIALIZING DAEMON CONNECTION ===");
+                try {
+                    Node node = walletManager.createNodeFromConfig();
+                    Log.d(TAG, "Node config: " + node.displayProperties());
+
+                    long handle = wallet.initJ(
+                            node.getAddress(), 0,
+                            node.getUsername(), node.getPassword(),
+                            node.isSsl(), false, ""
+                    );
+                    Log.d(TAG, "initJ handle: " + handle);
+                    if (handle == 0) {
+                        Log.w(TAG, "initJ returned 0, applying fallback daemon setup");
+                        walletManager.setDaemonAddress(node.getAddress());
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Exception during daemon init", e);
+                    walletManager.setDaemonAddress(walletManager.getDaemonAddress());
+                }
+
+                // Step 6: Status check
+                int status = wallet.getStatus();
+                String statusName = (status < Wallet.Status.values().length)
+                        ? Wallet.Status.values()[status].name() : "UNKNOWN";
+                Log.d(TAG, "Wallet status: " + statusName + " (" + status + ")");
+                if (status != Wallet.Status.Status_Ok.ordinal()) {
+                    notifyWalletInitialized(false, "Init failed: " + statusName);
+                    future.complete(false);
+                    return;
+                }
+
+                // Step 7: Check read-only flag
+                boolean isReadOnly = false;
+                try {
+                    isReadOnly = wallet.isReadOnly();
+                } catch (Throwable t) {
+                    Log.w(TAG, "Cannot determine read-only state", t);
+                }
+                if (isReadOnly) {
+                    Log.w(TAG, "⚠️ Wallet opened in read-only mode");
+                    notifyWalletInitialized(true, "Read-only wallet");
+                } else {
+                    notifyWalletInitialized(true, "Wallet initialized OK");
+                }
+
+                // Step 8: Get metadata
+                try {
+                    walletAddress = wallet.getAddress();
+                    Log.i(TAG, "Wallet address: " + walletAddress);
+                    Log.d(TAG, "Height=" + wallet.getBlockChainHeight() + 
+                          ", Restore=" + wallet.getRestoreHeight());
+                } catch (Exception e) {
+                    Log.w(TAG, "Metadata fetch failed", e);
+                }
+
+                // Step 9: Start syncing
+                isInitialized = true;
+                performSync();
+                startPeriodicSync();
+
+                future.complete(true);
+                Log.i(TAG, "✓ WALLET INITIALIZATION COMPLETE");
+
+            } catch (Exception e) {
+                Log.e(TAG, "✗ Exception during wallet init", e);
+                notifyWalletInitialized(false, "Error: " + e.getMessage());
+                future.completeExceptionally(e);
             }
         });
 
@@ -1355,11 +1360,6 @@ public class WalletSuite {
 
     public void initializeWalletFromSeed(String seed, long restoreHeight, int requestedNetType) {
         syncExecutor.execute(() -> {
-            // FIX: Temporarily permit network on this thread
-            StrictMode.ThreadPolicy oldPolicy = StrictMode.getThreadPolicy();
-            StrictMode.setThreadPolicy(new StrictMode.ThreadPolicy.Builder()
-                .permitNetwork()
-                .build());
             try {
                 Log.i(TAG, "=== RESTORING WALLET FROM SEED ===");
                 Log.d(TAG, "Restore height: " + restoreHeight);
@@ -1385,7 +1385,6 @@ public class WalletSuite {
                     setupWallet();
                     isInitialized = true;
                     notifyWalletInitialized(true, "Wallet restored");
-
                     performSync();
                     startPeriodicSync();
                 } else {
@@ -1396,9 +1395,6 @@ public class WalletSuite {
             } catch (Exception e) {
                 Log.e(TAG, "✗ Exception during wallet restoration", e);
                 notifyWalletInitialized(false, "Error: " + e.getMessage());
-            } finally {
-                // Restore original StrictMode policy
-                StrictMode.setThreadPolicy(oldPolicy);
             }
         });
     }

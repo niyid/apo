@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -731,7 +732,7 @@ fun HomeScreen(
         // Balance Card
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().height(220.dp),
+                modifier = Modifier.fillMaxWidth().height(220.dp).semantics(mergeDescendants = true) { },
                 shape = RoundedCornerShape(24.dp),
                 elevation = CardDefaults.cardElevation(8.dp)
             ) {
@@ -832,7 +833,7 @@ fun HomeScreen(
         // Address Card
         item {
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { },
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
@@ -887,7 +888,7 @@ fun QuickActionButton(
     color: Color = MaterialTheme.colorScheme.primary
 ) {
     Card(
-        modifier = modifier.height(110.dp),
+        modifier = modifier.height(110.dp).semantics(mergeDescendants = true) { },
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         onClick = onClick
