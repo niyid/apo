@@ -1471,10 +1471,29 @@ public class WalletSuite {
         return sb.toString();
     }
 
+    /**
+     * Reloads configuration from disk and updates daemon settings
+     * FIXED: Now runs on background thread to avoid NetworkOnMainThreadException
+     */
     public void reloadConfiguration() {
         loadConfiguration();
         Log.i(TAG, "Config reloaded from: " + getCurrentConfigPath());
-        if (wallet != null) setDaemonFromConfigAndApply();
+        
+        // CRITICAL FIX: Run daemon setup on background thread
+        if (wallet != null) {
+            executorService.execute(() -> {
+                try {
+                    boolean success = setDaemonFromConfigAndApply();
+                    if (success) {
+                        Log.i(TAG, "✓ Daemon configuration reloaded successfully");
+                    } else {
+                        Log.w(TAG, "⚠ Daemon configuration reload failed");
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "✗ Error reloading daemon configuration", e);
+                }
+            });
+        }
     }
 
     public static void copyDefaultConfigToExternalStorage(Context ctx) {
