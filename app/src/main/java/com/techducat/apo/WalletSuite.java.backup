@@ -1209,10 +1209,8 @@ public class WalletSuite {
                 File backupKeysFile = new File(sdcardDir, walletName + ".keys");
                 File backupAddressFile = new File(sdcardDir, walletName + ".address.txt");
 
-                // Step 2: Determine target directory - USE PERMISSIONHANDLER (SELinux-safe)
-                // OLD: File dir = context.getDir("wallets", Context.MODE_PRIVATE);
-                String storagePath = PermissionHandler.INSTANCE.getWalletStorageDir(context);
-                File dir = new File(storagePath, "wallets");
+                // Step 2: Determine target directory - ORIGINAL PATH MAINTAINED
+                File dir = context.getDir("wallets", Context.MODE_PRIVATE);
                 Log.d(TAG, "Wallets directory: " + dir.getAbsolutePath());
                 if (!dir.exists() && !dir.mkdirs()) {
                     Log.e(TAG, "CRITICAL: Cannot create wallets directory");
@@ -1366,10 +1364,8 @@ public class WalletSuite {
                 Log.i(TAG, "=== RESTORING WALLET FROM SEED ===");
                 Log.d(TAG, "Restore height: " + restoreHeight);
                 
-                // USE CONSISTENT PATH with main initializeWallet method (SELinux-safe)
-                // OLD: File dir = context.getDir("wallets", Context.MODE_PRIVATE);
-                String storagePath = PermissionHandler.INSTANCE.getWalletStorageDir(context);
-                File dir = new File(storagePath, "wallets");
+                // USE CONSISTENT PATH with main initializeWallet method
+                File dir = context.getDir("wallets", Context.MODE_PRIVATE);
                 if (!dir.exists() && !dir.mkdirs()) {
                     Log.e(TAG, "CRITICAL: Cannot create wallets directory");
                     notifyWalletInitialized(false, "Cannot create wallets dir");

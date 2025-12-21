@@ -81,6 +81,7 @@ fun generateQRCode(content: String, size: Int = 512): Bitmap? {
     }
 }
 
+
 // ============================================================================
 // CHANGENOW SWAP SERVICE
 // ============================================================================
@@ -238,16 +239,25 @@ class MoneroWalletActivity : ComponentActivity() {
     private lateinit var walletSuite: WalletSuite
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Install splash screen (Android 12+)
-        val splashScreen = installSplashScreen()
-        
-        super.onCreate(savedInstanceState)
-        
-        // Keep splash screen visible while wallet initializes
-        var keepSplashOnScreen = true
-        splashScreen.setKeepOnScreenCondition { keepSplashOnScreen }
-        
-        walletSuite = WalletSuite.getInstance(this)
+    // Install splash screen (Android 12+)
+    val splashScreen = installSplashScreen()
+    
+    super.onCreate(savedInstanceState)
+    
+    // CHECK PERMISSIONS FIRST
+    if (!PermissionHandler.hasStoragePermissions(this)) {
+        Log.w("MoneroWallet", "Storage permissions not granted, requesting...")
+        PermissionHandler.requestStoragePermissions(this)
+    }
+    
+    // Log permission status for debugging SELinux issues
+    PermissionHandler.logPermissionStatus(this)
+    
+    // Keep splash screen visible while wallet initializes
+    var keepSplashOnScreen = true
+    splashScreen.setKeepOnScreenCondition { keepSplashOnScreen }
+    
+    walletSuite = WalletSuite.getInstance(this)
         
         setContent {
             MoneroWalletTheme {
@@ -282,6 +292,45 @@ class MoneroWalletActivity : ComponentActivity() {
         }
         super.onDestroy()
     }
+
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        
+        PermissionHandler.onRequestPermissionsResult(
+            requestCode,
+            permissions,
+            grantResults,
+            onGranted = {
+                Log.i("MoneroWallet", "Storage permissions granted - wallet can proceed")
+                // Permissions granted - wallet initialization can proceed normally
+            },
+            onDenied = {
+                Log.w("MoneroWallet", "Storage permissions denied - showing rationale")
+                // Show dialog explaining why permissions are needed
+                showPermissionDeniedDialog()
+            }
+        )
+    }
+
+    private fun showPermissionDeniedDialog() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.permission_storage_required_title)
+            .setMessage(R.string.permission_storage_required_message)
+            .setPositiveButton(R.string.permission_grant) { _, _ ->
+                PermissionHandler.requestStoragePermissions(this)
+            }
+            .setNegativeButton(R.string.exit) { _, _ ->
+                finish()
+            }
+            .setCancelable(false)
+            .show()
+    }    
+    
 }
 
 @Composable

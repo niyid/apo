@@ -602,6 +602,11 @@
     <!-- Reload Configuration Strings -->
     <string name="reload_config_initiated">Configuration reload initiated. Daemon: %1$s:%2$d</string>
     <string name="reload_config_failed">Failed to reload: %1$s</string>    
+
+    <string name="permission_storage_required_title">Storage Permission Required</string>
+    <string name="permission_storage_required_message">This app needs storage permission to save your Monero wallet securely. Without this permission, the wallet cannot function properly.</string>
+    <string name="permission_grant">Grant Permission</string>
+    <string name="exit">Exit</string>
     
     <!-- Currency Names -->
     <string name="currency_xmr">Monero (XMR)</string>
