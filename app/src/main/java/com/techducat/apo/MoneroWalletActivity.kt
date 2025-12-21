@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -579,8 +580,25 @@ fun KeyDisplayCard(
 
 @Composable
 fun SecuritySettingsDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var biometricEnabled by remember { mutableStateOf(false) }
     var pinEnabled by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
+    
+    // Load current settings from SharedPreferences
+    LaunchedEffect(Unit) {
+        try {
+            val prefs = context.getSharedPreferences("wallet_security", android.content.Context.MODE_PRIVATE)
+            biometricEnabled = prefs.getBoolean("biometric_enabled", false)
+            pinEnabled = prefs.getBoolean("pin_enabled", false)
+        } catch (e: Exception) {
+            // Settings don't exist yet, use defaults (false)
+            Log.d("SecuritySettings", "No saved settings found, using defaults")
+        }
+        isLoading = false
+    }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -592,30 +610,71 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SecurityOption(
-                    title = stringResource(R.string.security_biometric_title),
-                    subtitle = stringResource(R.string.security_biometric_subtitle),
-                    checked = biometricEnabled,
-                    onCheckedChange = { biometricEnabled = it }
-                )
-                
-                SecurityOption(
-                    title = stringResource(R.string.security_pin_title),
-                    subtitle = stringResource(R.string.security_pin_subtitle),
-                    checked = pinEnabled,
-                    onCheckedChange = { pinEnabled = it }
-                )
-                
-                Text(
-                    text = "Note: Full implementation requires androidx.biometric library and proper setup",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                )
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                    }
+                } else {
+                    SecurityOption(
+                        title = stringResource(R.string.security_biometric_title),
+                        subtitle = stringResource(R.string.security_biometric_subtitle),
+                        checked = biometricEnabled,
+                        onCheckedChange = { biometricEnabled = it },
+                        enabled = !isSaving
+                    )
+                    
+                    SecurityOption(
+                        title = stringResource(R.string.security_pin_title),
+                        subtitle = stringResource(R.string.security_pin_subtitle),
+                        checked = pinEnabled,
+                        onCheckedChange = { pinEnabled = it },
+                        enabled = !isSaving
+                    )
+                    
+                    Text(
+                        text = "Note: Full implementation requires androidx.biometric library and proper setup",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        try {
+                            // Save settings to SharedPreferences
+                            val prefs = context.getSharedPreferences("wallet_security", android.content.Context.MODE_PRIVATE)
+                            prefs.edit().apply {
+                                putBoolean("biometric_enabled", biometricEnabled)
+                                putBoolean("pin_enabled", pinEnabled)
+                                apply()
+                            }
+                            
+                            delay(300) // Brief delay to show save action
+                            onDismiss()
+                        } catch (e: Exception) {
+                            Log.e("SecuritySettings", "Failed to save settings", e)
+                            isSaving = false
+                        }
+                    }
+                },
+                enabled = !isLoading && !isSaving
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(text = stringResource(R.string.dialog_close))
             }
         }
@@ -627,7 +686,8 @@ fun SecurityOption(
     title: String,
     subtitle: String,
     checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -638,17 +698,21 @@ fun SecurityOption(
             Text(
                 text = title,
                 fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface 
+                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
             Text(
                 text = subtitle,
                 fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                color = if (enabled) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
             )
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = onCheckedChange,
+            enabled = enabled
         )
     }
 }
@@ -2052,205 +2116,244 @@ fun SettingsScreen(
         })
     }
     
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                text = stringResource(R.string.nav_settings),
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-        }
-        
-        // Wallet Info Card
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+    val scope = rememberCoroutineScope()
+    val snackbarHost = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Text(
+                    text = stringResource(R.string.nav_settings),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            
+            // Wallet Info Card
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.settings_wallet_info),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.settings_status),
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            text = stringResource(R.string.settings_wallet_info),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (walletSuite.isReady) Color(0xFF4CAF50) 
-                                        else Color(0xFFFF6600)
-                                    )
+                            Text(
+                                text = stringResource(R.string.settings_status),
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (walletSuite.isReady) Color(0xFF4CAF50) 
+                                            else Color(0xFFFF6600)
+                                        )
+                                )
+                                Text(
+                                    text = if (walletSuite.isReady) stringResource(R.string.settings_ready) else stringResource(R.string.settings_not_ready),
+                                    color = if (walletSuite.isReady) Color(0xFF4CAF50) else Color(0xFFFF6600),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Syncing",
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
                             Text(
-                                text = if (walletSuite.isReady) stringResource(R.string.settings_ready) else stringResource(R.string.settings_not_ready),
-                                color = if (walletSuite.isReady) Color(0xFF4CAF50) else Color(0xFFFF6600),
-                                fontWeight = FontWeight.SemiBold
+                                text = if (walletSuite.isSyncing) stringResource(R.string.common_yes) else stringResource(R.string.common_no),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Syncing",
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                        Text(
-                            text = if (walletSuite.isSyncing) stringResource(R.string.common_yes) else stringResource(R.string.common_no),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
                 }
+            }
+            
+            item {
+                Text(
+                    text = stringResource(R.string.settings_maintenance),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            
+            item {
+                SettingsCard(
+                    title = stringResource(R.string.settings_rescan_blockchain),
+                    subtitle = if (isRescanning) 
+                        stringResource(R.string.settings_rescan_progress, rescanProgress)
+                    else 
+                        stringResource(R.string.settings_rescan_subtitle),
+                    icon = Icons.Default.Refresh,
+                    onClick = { showRescanDialog = true },
+                    enabled = !isRescanning
+                )
+            }
+            
+            item {
+                SettingsCard(
+                    title = stringResource(R.string.settings_force_refresh),
+                    subtitle = stringResource(R.string.settings_force_refresh_subtitle),
+                    icon = Icons.Default.Refresh,
+                    onClick = { walletSuite.triggerImmediateSync() }
+                )
+            }
+            
+            item {
+                Text(
+                    text = stringResource(R.string.settings_backup_security),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            
+            item {
+                SettingsCard(
+                    title = stringResource(R.string.settings_view_seed),
+                    subtitle = stringResource(R.string.settings_view_seed_subtitle),
+                    icon = Icons.Default.Key,
+                    onClick = { showSeedDialog = true }
+                )
+            }
+            
+            item {
+                SettingsCard(
+                    title = stringResource(R.string.settings_export_keys),
+                    subtitle = stringResource(R.string.settings_export_keys_subtitle),
+                    icon = Icons.Default.Key,
+                    onClick = { showExportKeysDialog = true }
+                )
+            }
+            
+            item {
+                Text(
+                    text = stringResource(R.string.settings_network),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            
+            item {
+                SettingsCard(
+                    title = stringResource(R.string.settings_node_settings),
+                    subtitle = stringResource(R.string.settings_current_node, walletSuite.daemonAddress, walletSuite.daemonPort),
+                    icon = Icons.Default.Cloud,
+                    onClick = { showNodeDialog = true }
+                )
+            }
+            
+            item {
+                SettingsCard(
+                    title = stringResource(R.string.settings_reload_config),
+                    subtitle = stringResource(R.string.settings_reload_config_subtitle),
+                    icon = Icons.Default.Settings,
+                    onClick = { 
+                        scope.launch {
+                            try {
+                                // Call reload - it runs on background thread internally
+                                walletSuite.reloadConfiguration()
+                                
+                                // Show immediate feedback since the method returns quickly
+                                // The actual daemon reconnection happens in background
+                                snackbarHost.showSnackbar(
+                                    context.getString(
+                                        R.string.reload_config_initiated,
+                                        walletSuite.daemonAddress,
+                                        walletSuite.daemonPort
+                                    ),
+                                    duration = SnackbarDuration.Long
+                                )
+                            } catch (e: Exception) {
+                                snackbarHost.showSnackbar(
+                                    context.getString(
+                                        R.string.reload_config_failed,
+                                        e.message ?: "Unknown error"
+                                    ),
+                                    duration = SnackbarDuration.Long
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+            
+            item {
+                Text(
+                    text = stringResource(R.string.settings_advanced),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+            
+            item {
+                SettingsCard(
+                    title = stringResource(R.string.settings_tx_search),
+                    subtitle = stringResource(R.string.settings_tx_search_subtitle),
+                    icon = Icons.Default.Search,
+                    onClick = { showTxSearchDialog = true }
+                )
+            }
+            
+            item {
+                SettingsCard(
+                    title = stringResource(R.string.settings_security),
+                    subtitle = stringResource(R.string.settings_security_subtitle),
+                    icon = Icons.Default.Security,
+                    onClick = { showSecurityDialog = true }
+                )
             }
         }
         
-        item {
-            Text(
-                text = stringResource(R.string.settings_maintenance),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        
-        item {
-            SettingsCard(
-                title = stringResource(R.string.settings_rescan_blockchain),
-                subtitle = if (isRescanning) 
-                    stringResource(R.string.settings_rescan_progress, rescanProgress)
-                else 
-                    stringResource(R.string.settings_rescan_subtitle),
-                icon = Icons.Default.Refresh,
-                onClick = { showRescanDialog = true },
-                enabled = !isRescanning
-            )
-        }
-        
-        item {
-            SettingsCard(
-                title = stringResource(R.string.settings_force_refresh),
-                subtitle = stringResource(R.string.settings_force_refresh_subtitle),
-                icon = Icons.Default.Refresh,
-                onClick = { walletSuite.triggerImmediateSync() }
-            )
-        }
-        
-        item {
-            Text(
-                text = stringResource(R.string.settings_backup_security),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        
-        item {
-            SettingsCard(
-                title = stringResource(R.string.settings_view_seed),
-                subtitle = stringResource(R.string.settings_view_seed_subtitle),
-                icon = Icons.Default.Key,
-                onClick = { showSeedDialog = true }
-            )
-        }
-        
-        item {
-            SettingsCard(
-                title = stringResource(R.string.settings_export_keys),
-                subtitle = stringResource(R.string.settings_export_keys_subtitle),
-                icon = Icons.Default.Key,
-                onClick = { showExportKeysDialog = true } // FIXED
-            )
-        }
-        
-        item {
-            Text(
-                text = stringResource(R.string.settings_network),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        
-        item {
-            SettingsCard(
-                title = stringResource(R.string.settings_node_settings),
-                subtitle = stringResource(R.string.settings_current_node, walletSuite.daemonAddress, walletSuite.daemonPort),
-                icon = Icons.Default.Cloud,
-                onClick = { showNodeDialog = true }
-            )
-        }
-        
-        item {
-            SettingsCard(
-                title = stringResource(R.string.settings_reload_config),
-                subtitle = stringResource(R.string.settings_reload_config_subtitle),
-                icon = Icons.Default.Settings,
-                onClick = { walletSuite.reloadConfiguration() }
-            )
-        }
-        
-        item {
-            Text(
-                text = stringResource(R.string.settings_advanced),
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        
-        item {
-            SettingsCard(
-                title = stringResource(R.string.settings_tx_search),
-                subtitle = stringResource(R.string.settings_tx_search_subtitle),
-                icon = Icons.Default.Search,
-                onClick = { showTxSearchDialog = true }
-            )
-        }
-        
-        item {
-            SettingsCard(
-                title = stringResource(R.string.settings_security),
-                subtitle = stringResource(R.string.settings_security_subtitle),
-                icon = Icons.Default.Security,
-                onClick = { showSecurityDialog = true } // FIXED
-            )
-        }
+        SnackbarHost(
+            hostState = snackbarHost,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
     }
     
     // ALL DIALOGS

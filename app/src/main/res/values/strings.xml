@@ -599,6 +599,10 @@
     <string name="security_biometric_disable">Disable Biometric</string>
     <string name="security_authenticate_prompt">Authenticate to enable biometric</string>
     
+    <!-- Reload Configuration Strings -->
+    <string name="reload_config_initiated">Configuration reload initiated. Daemon: %1$s:%2$d</string>
+    <string name="reload_config_failed">Failed to reload: %1$s</string>    
+    
     <!-- Currency Names -->
     <string name="currency_xmr">Monero (XMR)</string>
     <string name="currency_btc">Bitcoin (BTC)</string>
