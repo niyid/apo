@@ -176,7 +176,6 @@ class ChangeNowSwapService {
         refundAddress: String? = null
     ): Result<ExchangeStatus> = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
-        var writer: OutputStreamWriter? = null
         try {
             val url = URL("$BASE_URL/exchange")
             connection = url.openConnection() as HttpURLConnection
@@ -196,9 +195,13 @@ class ChangeNowSwapService {
                 refundAddress?.let { put("refundAddress", it) }
             }
             
-            writer = OutputStreamWriter(connection.outputStream)
-            writer.write(requestBody.toString())
-            writer.flush()
+            // FIXED: Use 'use' to guarantee proper resource cleanup
+            connection.outputStream.use { outputStream ->
+                OutputStreamWriter(outputStream).use { writer ->
+                    writer.write(requestBody.toString())
+                    writer.flush()
+                }
+            }
             
             val responseCode = connection.responseCode
             if (responseCode == HttpURLConnection.HTTP_OK) {
@@ -220,8 +223,7 @@ class ChangeNowSwapService {
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
-            // FIX: Properly close resources to prevent leaks
-            writer?.close()
+            // Connection cleanup - all streams already closed by 'use'
             connection?.disconnect()
         }
     }
