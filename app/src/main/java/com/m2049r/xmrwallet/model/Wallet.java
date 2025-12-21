@@ -19,6 +19,7 @@ public class Wallet {
     final static public long SWEEP_ALL = Long.MAX_VALUE;
     private static final String TAG = "com.bitchat.Wallet";
     private static final long RESCAN_TIMEOUT_MS = 10 * 60 * 1000L;
+    private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
     public enum Status {
         Status_Ok,
@@ -451,14 +452,20 @@ public class Wallet {
 
     @Override
     protected void finalize() throws Throwable {
-        if (handle != 0) {
+        if (handle != 0 && !isClosed.get()) {
+            Log.d(TAG, "Finalizer closing wallet handle: " + handle);
             close();
         }
         super.finalize();
     }
 
+    // Modify the close() method
     public boolean close() {
-        return WalletManager.getInstance().close(this);
-    }
+        if (isClosed.compareAndSet(false, true)) {
+            return WalletManager.getInstance().close(this);
+        }
+        Log.d(TAG, "Wallet already closed, skipping");
+        return true; // Already closed
+    }    
 }
 
