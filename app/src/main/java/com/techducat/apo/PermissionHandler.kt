@@ -11,7 +11,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import android.util.Log
+import timber.log.Timber
 import java.io.File
 
 /**
@@ -80,7 +80,7 @@ object PermissionHandler {
         when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
                 // Android 13+
-                Log.i(TAG, "Requesting Android 13+ storage permissions")
+                Timber.i("Requesting Android 13+ storage permissions")
                 ActivityCompat.requestPermissions(
                     activity,
                     STORAGE_PERMISSIONS_33_PLUS,
@@ -89,7 +89,7 @@ object PermissionHandler {
             }
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
                 // Android 11+
-                Log.i(TAG, "Requesting Android 11+ storage permissions")
+                Timber.i("Requesting Android 11+ storage permissions")
                 ActivityCompat.requestPermissions(
                     activity,
                     arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
@@ -98,14 +98,14 @@ object PermissionHandler {
                 
                 // Optionally request MANAGE_EXTERNAL_STORAGE for /Android/data/ access
                 if (!hasManageStoragePermission()) {
-                    Log.w(TAG, "MANAGE_EXTERNAL_STORAGE not granted - some features may be limited")
+                    Timber.w("MANAGE_EXTERNAL_STORAGE not granted - some features may be limited")
                     // Uncomment below to request this permission (requires special justification in Play Store)
                     // requestManageStoragePermission(activity)
                 }
             }
             else -> {
                 // Android 6-10
-                Log.i(TAG, "Requesting legacy storage permissions")
+                Timber.i("Requesting legacy storage permissions")
                 ActivityCompat.requestPermissions(
                     activity,
                     STORAGE_PERMISSIONS_PRE_33,
@@ -125,9 +125,9 @@ object PermissionHandler {
                 val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
                 intent.data = Uri.parse("package:" + activity.packageName)
                 activity.startActivityForResult(intent, REQUEST_CODE_MANAGE_STORAGE)
-                Log.i(TAG, "Launched MANAGE_EXTERNAL_STORAGE permission screen")
+                Timber.i("Launched MANAGE_EXTERNAL_STORAGE permission screen")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to request MANAGE_EXTERNAL_STORAGE", e)
+                Timber.e("Failed to request MANAGE_EXTERNAL_STORAGE", e)
                 // Fallback to general settings
                 val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
                 activity.startActivity(intent)
@@ -156,10 +156,10 @@ object PermissionHandler {
                 // This avoids SELinux denials: avc: denied { write } ... tcontext=u:object_r:shell_data_file:s0
                 val externalDir = context.getExternalFilesDir(null)
                 if (externalDir != null) {
-                    Log.i(TAG, "Using app-specific external storage (Android 11+): ${externalDir.absolutePath}")
+                    Timber.i("Using app-specific external storage (Android 11+): ${externalDir.absolutePath}")
                     externalDir.absolutePath
                 } else {
-                    Log.w(TAG, "External storage unavailable, falling back to internal")
+                    Timber.w("External storage unavailable, falling back to internal")
                     context.filesDir.absolutePath
                 }
             }
@@ -167,10 +167,10 @@ object PermissionHandler {
                 // Android 6-10: Can use traditional external storage
                 val externalDir = context.getExternalFilesDir(null)
                 if (externalDir != null) {
-                    Log.i(TAG, "Using external storage: ${externalDir.absolutePath}")
+                    Timber.i("Using external storage: ${externalDir.absolutePath}")
                     externalDir.absolutePath
                 } else {
-                    Log.w(TAG, "External storage unavailable, using internal")
+                    Timber.w("External storage unavailable, using internal")
                     context.filesDir.absolutePath
                 }
             }
@@ -198,7 +198,7 @@ object PermissionHandler {
         }
         
         val path = backupDir?.absolutePath ?: "${context.filesDir.absolutePath}/backups"
-        Log.i(TAG, "Backup storage directory: $path")
+        Timber.i("Backup storage directory: $path")
         return path
     }
 
@@ -216,10 +216,10 @@ object PermissionHandler {
             REQUEST_CODE_STORAGE -> {
                 if (grantResults.isNotEmpty() && 
                     grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                    Log.i(TAG, "✓ Storage permissions granted")
+                    Timber.i("✓ Storage permissions granted")
                     onGranted()
                 } else {
-                    Log.w(TAG, "✗ Storage permissions denied")
+                    Timber.w("✗ Storage permissions denied")
                     onDenied()
                 }
             }
@@ -230,18 +230,18 @@ object PermissionHandler {
      * Log current permission status (for debugging SELinux issues)
      */
     fun logPermissionStatus(context: Context) {
-        Log.d(TAG, "=== PERMISSION STATUS ===")
-        Log.d(TAG, "Android Version: ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})")
-        Log.d(TAG, "Has Storage Permissions: ${hasStoragePermissions(context)}")
+        Timber.d("=== PERMISSION STATUS ===")
+        Timber.d("Android Version: ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})")
+        Timber.d("Has Storage Permissions: ${hasStoragePermissions(context)}")
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Log.d(TAG, "Has MANAGE_EXTERNAL_STORAGE: ${hasManageStoragePermission()}")
+            Timber.d("Has MANAGE_EXTERNAL_STORAGE: ${hasManageStoragePermission()}")
         }
         
-        Log.d(TAG, "Wallet Storage Dir: ${getWalletStorageDir(context)}")
-        Log.d(TAG, "Backup Storage Dir: ${getBackupStorageDir(context)}")
-        Log.d(TAG, "Internal Files Dir: ${context.filesDir.absolutePath}")
-        Log.d(TAG, "External Files Dir: ${context.getExternalFilesDir(null)?.absolutePath ?: "null"}")
-        Log.d(TAG, "========================")
+        Timber.d("Wallet Storage Dir: ${getWalletStorageDir(context)}")
+        Timber.d("Backup Storage Dir: ${getBackupStorageDir(context)}")
+        Timber.d("Internal Files Dir: ${context.filesDir.absolutePath}")
+        Timber.d("External Files Dir: ${context.getExternalFilesDir(null)?.absolutePath ?: "null"}")
+        Timber.d("========================")
     }
 }

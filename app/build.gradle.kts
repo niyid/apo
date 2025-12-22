@@ -6,6 +6,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.parcelize")
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 android {
@@ -35,7 +37,6 @@ android {
             "zh",     // Chinese
             "ar",     // Arabic
             "ru",     // Russian
-            // Add any other languages your app actually supports
         )
         
         ndk {
@@ -43,7 +44,6 @@ android {
         }
     }
 
-    // Disable all Compose lint checks that have compatibility issues
     lint {
         disable += setOf(
             "NullSafeMutableLiveData",
@@ -95,22 +95,27 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Enable Crashlytics mapping file upload
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                mappingFileUploadEnabled = true
+            }
         }
         debug {
             isDebuggable = true
+            // Disable Crashlytics in debug builds
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+            }
         }
     }
     
-    // Updated packaging configuration for Monerujo and 16KB page size support
     packaging {
-        // For .so files (native libraries)
         jniLibs {
-            useLegacyPackaging = false  // CRITICAL: Ensures proper assignment for 16KB pages
+            useLegacyPackaging = false
             pickFirsts += "**/libc++_shared.so"
             pickFirsts += "**/libjsc.so"
-            pickFirsts += "**/libmonerujo.so"  // Add Monerujo library
+            pickFirsts += "**/libmonerujo.so"
         }
-        // For other resources
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "META-INF/DEPENDENCIES"
@@ -131,7 +136,7 @@ android {
     }
     
     buildFeatures {
-        buildConfig = true  // Enable BuildConfig generation
+        buildConfig = true
         compose = true
         viewBinding = false
         dataBinding = false
@@ -142,7 +147,6 @@ android {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
             all {
-                // Use Kotlin DSL syntax for system properties
                 it.systemProperty("robolectric.offline", "true")
                 it.systemProperty("koin.test", "false")
                 it.systemProperty("robolectric.nativedeps.skip", "true")
@@ -184,7 +188,11 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended:1.7.6")
-    implementation("com.bugfender.sdk:android:3.1.1")
+    
+    // Firebase - Replace Bugfender
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx")
     
     // Monerujo dependencies
     implementation("org.json:json:20231013")
@@ -279,7 +287,7 @@ dependencies {
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.8.1")
     
-    // Unit Testing - MockK (Kotlin mocking library)
+    // Unit Testing - MockK
     testImplementation("io.mockk:mockk:1.13.8")
     testImplementation("io.mockk:mockk-android:1.13.8")
     
@@ -292,11 +300,6 @@ dependencies {
     testImplementation("androidx.arch.core:core-testing:2.2.0")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.0")
-    
-    // REMOVED: Koin test dependencies to prevent auto-initialization
-    // testImplementation("io.insert-koin:koin-test:3.5.0")
-    // testImplementation("io.insert-koin:koin-test-junit4:3.5.0")
-    
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("androidx.room:room-testing:2.6.1")
     

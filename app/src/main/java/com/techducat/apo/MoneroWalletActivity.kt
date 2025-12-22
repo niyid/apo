@@ -41,7 +41,7 @@ import java.net.URL
 import java.io.OutputStreamWriter
 import org.json.JSONObject
 import java.util.*
-import android.util.Log
+import timber.log.Timber
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import android.graphics.Bitmap
@@ -76,7 +76,7 @@ fun generateQRCode(content: String, size: Int = 512): Bitmap? {
         
         bitmap
     } catch (e: Exception) {
-        Log.e("QRCode", "Failed to generate QR code", e)
+        Timber.e("QRCode", "Failed to generate QR code", e)
         null
     }
 }
@@ -246,7 +246,7 @@ class MoneroWalletActivity : ComponentActivity() {
     
     // CHECK PERMISSIONS FIRST
     if (!PermissionHandler.hasStoragePermissions(this)) {
-        Log.w("MoneroWallet", "Storage permissions not granted, requesting...")
+        Timber.w("MoneroWallet", "Storage permissions not granted, requesting...")
         PermissionHandler.requestStoragePermissions(this)
     }
     
@@ -281,14 +281,14 @@ class MoneroWalletActivity : ComponentActivity() {
         // CRITICAL FIX: Only close wallet if app is actually finishing
         // Don't close on configuration changes or temporary activity destruction
         if (isFinishing) {
-            Log.d("MoneroWallet", "Activity finishing - closing wallet")
+            Timber.d("MoneroWallet", "Activity finishing - closing wallet")
             try {
                 walletSuite.close()
             } catch (e: Exception) {
-                Log.e("MoneroWallet", "Error closing wallet", e)
+                Timber.e("MoneroWallet", "Error closing wallet", e)
             }
         } else {
-            Log.d("MoneroWallet", "Activity destroyed but not finishing - keeping wallet open")
+            Timber.d("MoneroWallet", "Activity destroyed but not finishing - keeping wallet open")
         }
         super.onDestroy()
     }
@@ -306,11 +306,11 @@ class MoneroWalletActivity : ComponentActivity() {
             permissions,
             grantResults,
             onGranted = {
-                Log.i("MoneroWallet", "Storage permissions granted - wallet can proceed")
+                Timber.i("MoneroWallet", "Storage permissions granted - wallet can proceed")
                 // Permissions granted - wallet initialization can proceed normally
             },
             onDenied = {
-                Log.w("MoneroWallet", "Storage permissions denied - showing rationale")
+                Timber.w("MoneroWallet", "Storage permissions denied - showing rationale")
                 // Show dialog explaining why permissions are needed
                 showPermissionDeniedDialog()
             }
@@ -644,7 +644,7 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
             pinEnabled = prefs.getBoolean("pin_enabled", false)
         } catch (e: Exception) {
             // Settings don't exist yet, use defaults (false)
-            Log.d("SecuritySettings", "No saved settings found, using defaults")
+            Timber.d("SecuritySettings", "No saved settings found, using defaults")
         }
         isLoading = false
     }
@@ -709,7 +709,7 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
                             delay(300) // Brief delay to show save action
                             onDismiss()
                         } catch (e: Exception) {
-                            Log.e("SecuritySettings", "Failed to save settings", e)
+                            Timber.e("SecuritySettings", "Failed to save settings", e)
                             isSaving = false
                         }
                     }

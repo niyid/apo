@@ -229,3 +229,23 @@
 # ============================================================================
 # END MONERO WALLET RULES
 # ============================================================================
+
+# ============================================================================
+# RESOURCE LEAK PREVENTION
+# ============================================================================
+
+# Keep AutoCloseable implementations
+-keep class * implements java.lang.AutoCloseable {
+    public void close();
+}
+
+# Keep Closeable implementations
+-keep class * implements java.io.Closeable {
+    public void close();
+}
+
+# Warn about missing close() calls
+-assumenosideeffects class * implements java.io.Closeable {
+    public void close();
+}
+

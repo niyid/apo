@@ -5,7 +5,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
-import android.util.Log;
+import timber.log.Timber;
 
 import com.m2049r.xmrwallet.data.Node;
 import com.m2049r.xmrwallet.data.TxData;
@@ -222,7 +222,7 @@ public class WalletSuite {
         if (instance == null) {
             instance = new WalletSuite(context);
             if (!nativeAvailable()) {
-                Log.e(TAG, "Failed to load native library monerujo");
+                Timber.e(TAG, "Failed to load native library monerujo");
             }
         }
         return instance;
@@ -246,11 +246,11 @@ public class WalletSuite {
     private void registerShutdownHandler() {
         try {
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                Log.d(TAG, "Shutdown hook triggered");
+                Timber.d(TAG, "Shutdown hook triggered");
                 closeWalletSync();
             }));
         } catch (Exception e) {
-            Log.w(TAG, "Could not register shutdown hook", e);
+            Timber.w(TAG, "Could not register shutdown hook", e);
         }
     }
 
@@ -258,7 +258,7 @@ public class WalletSuite {
         // CRITICAL: Set state first to stop all operations
         currentState.set(WalletState.CLOSING);
         
-        Log.i(TAG, "=== SAFE WALLET CLOSURE INITIATED ===");
+        Timber.i(TAG, "=== SAFE WALLET CLOSURE INITIATED ===");
         
         // Stop periodic sync immediately
         stopPeriodicSync();
@@ -272,15 +272,15 @@ public class WalletSuite {
         // Wait for sync executor to finish current operation
         syncExecutor.shutdown();
         try {
-            Log.d(TAG, "Waiting for sync operations to complete...");
+            Timber.d(TAG, "Waiting for sync operations to complete...");
             if (!syncExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                Log.w(TAG, "Forcing sync executor shutdown");
+                Timber.w(TAG, "Forcing sync executor shutdown");
                 syncExecutor.shutdownNow();
                 syncExecutor.awaitTermination(2, TimeUnit.SECONDS);
             }
-            Log.d(TAG, "Sync operations stopped");
+            Timber.d(TAG, "Sync operations stopped");
         } catch (InterruptedException e) {
-            Log.w(TAG, "Interrupted while waiting for sync", e);
+            Timber.w(TAG, "Interrupted while waiting for sync", e);
             syncExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }
@@ -289,7 +289,7 @@ public class WalletSuite {
         synchronized (walletLock) {
             try {
                 if (wallet != null && isInitialized) {
-                    Log.d(TAG, "Closing wallet synchronously");
+                    Timber.d(TAG, "Closing wallet synchronously");
                     
                     // Remove listener first
                     wallet.setListener(null);
@@ -298,9 +298,9 @@ public class WalletSuite {
                     if (currentWalletPath != null) {
                         try {
                             wallet.store(currentWalletPath);
-                            Log.d(TAG, "Wallet persisted before close");
+                            Timber.d(TAG, "Wallet persisted before close");
                         } catch (Exception e) {
-                            Log.w(TAG, "Failed to persist wallet during shutdown", e);
+                            Timber.w(TAG, "Failed to persist wallet during shutdown", e);
                         }
                     }
                     
@@ -313,10 +313,10 @@ public class WalletSuite {
                     
                     // Close wallet
                     wallet.close();
-                    Log.d(TAG, "Wallet closed successfully");
+                    Timber.d(TAG, "Wallet closed successfully");
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error during wallet closure", e);
+                Timber.e(TAG, "Error during wallet closure", e);
             } finally {
                 wallet = null;
                 isInitialized = false;
@@ -324,11 +324,11 @@ public class WalletSuite {
             }
         }
         
-        Log.i(TAG, "=== SAFE WALLET CLOSURE COMPLETE ===");
+        Timber.i(TAG, "=== SAFE WALLET CLOSURE COMPLETE ===");
     }
         
     public void rescanBlockchain() {
-       Log.i(TAG, "Public rescanBlockchain() called from UI");
+       Timber.i(TAG, "Public rescanBlockchain() called from UI");
        triggerRescan();
    }
 
@@ -338,19 +338,19 @@ public class WalletSuite {
      */
     public String getViewKey() {
         if (!isInitialized || wallet == null) {
-            Log.w(TAG, "Cannot get view key - wallet not initialized");
+            Timber.w(TAG, "Cannot get view key - wallet not initialized");
             return "";
         }
         
         try {
             String secretViewKey = wallet.getSecretViewKey();
             if (secretViewKey == null || secretViewKey.isEmpty()) {
-                Log.w(TAG, "View key is null or empty");
+                Timber.w(TAG, "View key is null or empty");
                 return "";
             }
             return secretViewKey;
         } catch (Exception e) {
-            Log.e(TAG, "Error getting view key", e);
+            Timber.e(TAG, "Error getting view key", e);
             return "";
         }
     }
@@ -362,19 +362,19 @@ public class WalletSuite {
      */
     public String getSpendKey() {
         if (!isInitialized || wallet == null) {
-            Log.w(TAG, "Cannot get spend key - wallet not initialized");
+            Timber.w(TAG, "Cannot get spend key - wallet not initialized");
             return "";
         }
         
         try {
             String secretSpendKey = wallet.getSecretSpendKey();
             if (secretSpendKey == null || secretSpendKey.isEmpty()) {
-                Log.w(TAG, "Spend key is null or empty");
+                Timber.w(TAG, "Spend key is null or empty");
                 return "";
             }
             return secretSpendKey;
         } catch (Exception e) {
-            Log.e(TAG, "Error getting spend key", e);
+            Timber.e(TAG, "Error getting spend key", e);
             return "";
         }
     }
@@ -406,7 +406,7 @@ public class WalletSuite {
                         mainHandler.post(() -> callback.onSuccess(finalSeed));
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Error getting seed", e);
+                    Timber.e(TAG, "Error getting seed", e);
                     final String error = e.getMessage() != null ? e.getMessage() : "Unknown error";
                     mainHandler.post(() -> callback.onError(error));
                 }
@@ -421,14 +421,14 @@ public class WalletSuite {
      */
     public String getSeed() {
         if (!isInitialized || wallet == null) {
-            Log.w(TAG, "Cannot get seed - wallet not initialized");
+            Timber.w(TAG, "Cannot get seed - wallet not initialized");
             return "";
         }
         
         // Check if we're in a state that allows wallet access
         WalletState state = currentState.get();
         if (state == WalletState.RESCANNING || state == WalletState.CLOSING) {
-            Log.w(TAG, "Cannot get seed - wallet state: " + state);
+            Timber.w(TAG, "Cannot get seed - wallet state: " + state);
             return "";
         }
         
@@ -436,19 +436,19 @@ public class WalletSuite {
             try {
                 String seed = wallet.getSeed();
                 if (seed == null || seed.isEmpty()) {
-                    Log.w(TAG, "Seed is null or empty");
+                    Timber.w(TAG, "Seed is null or empty");
                     return "";
                 }
                 return seed;
             } catch (Exception e) {
-                Log.e(TAG, "Error getting seed", e);
+                Timber.e(TAG, "Error getting seed", e);
                 return "";
             }
         }
     }
     
     public void close() {
-        Log.i(TAG, "=== SHUTDOWN INITIATED ===");
+        Timber.i(TAG, "=== SHUTDOWN INITIATED ===");
         
         stopPeriodicSync();
         
@@ -463,7 +463,7 @@ public class WalletSuite {
         
         try {
             if (!syncExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                Log.w(TAG, "Sync executor did not terminate, forcing shutdown");
+                Timber.w(TAG, "Sync executor did not terminate, forcing shutdown");
                 syncExecutor.shutdownNow();
             }
             if (!periodicSyncScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
@@ -475,7 +475,7 @@ public class WalletSuite {
             Thread.currentThread().interrupt();
         }
         
-        Log.i(TAG, "=== SHUTDOWN COMPLETE ===");
+        Timber.i(TAG, "=== SHUTDOWN COMPLETE ===");
     }
     
     
@@ -497,44 +497,44 @@ public class WalletSuite {
      */
     private void startPeriodicSync() {
         if (periodicSyncTask != null && !periodicSyncTask.isDone()) {
-            Log.d(TAG, "Periodic sync already scheduled");
+            Timber.d(TAG, "Periodic sync already scheduled");
             return;
         }
 
-        Log.i(TAG, "=== STARTING PERIODIC SYNC (interval: " + (PERIODIC_SYNC_INTERVAL_MS / 60000) + " minutes) ===");
+        Timber.i(TAG, "=== STARTING PERIODIC SYNC (interval: " + (PERIODIC_SYNC_INTERVAL_MS / 60000) + " minutes) ===");
 
         periodicSyncTask = periodicSyncScheduler.scheduleWithFixedDelay(() -> {
             if (!isInitialized) {
-                Log.d(TAG, "⏭ Skipping periodic sync - wallet not initialized");
+                Timber.d(TAG, "⏭ Skipping periodic sync - wallet not initialized");
                 return;
             }
             
             WalletState state = currentState.get();
             if (state != WalletState.IDLE) {
-                Log.d(TAG, "⏭ Skipping periodic sync - state: " + state);
+                Timber.d(TAG, "⏭ Skipping periodic sync - state: " + state);
                 return;
             }
             
             // Check if previous sync is still running
             long timeSinceLastSync = System.currentTimeMillis() - lastSyncStartTime.get();
             if (timeSinceLastSync < SYNC_TIMEOUT_MS && lastSyncStartTime.get() > 0) {
-                Log.w(TAG, "⚠️ Previous sync may still be running (" + (timeSinceLastSync / 1000) + "s ago)");
+                Timber.w(TAG, "⚠️ Previous sync may still be running (" + (timeSinceLastSync / 1000) + "s ago)");
                 return;
             }
             
-            Log.i(TAG, "⏰ Periodic sync triggered");
+            Timber.i(TAG, "⏰ Periodic sync triggered");
             performSync();
             
         }, PERIODIC_SYNC_INTERVAL_MS, PERIODIC_SYNC_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
-        Log.i(TAG, "✓ Periodic sync scheduler started");
+        Timber.i(TAG, "✓ Periodic sync scheduler started");
     }
 
     private void stopPeriodicSync() {
         if (periodicSyncTask != null) {
             periodicSyncTask.cancel(false);
             periodicSyncTask = null;
-            Log.i(TAG, "✓ Periodic sync scheduler stopped");
+            Timber.i(TAG, "✓ Periodic sync scheduler stopped");
         }
     }
 
@@ -545,13 +545,13 @@ public class WalletSuite {
         // State check with atomic compare-and-set
         if (!currentState.compareAndSet(WalletState.IDLE, WalletState.SYNCING)) {
             WalletState state = currentState.get();
-            Log.w(TAG, "Cannot start sync - current state: " + state);
+            Timber.w(TAG, "Cannot start sync - current state: " + state);
             return;
         }
         
         lastSyncStartTime.set(System.currentTimeMillis());
         
-        Log.i(TAG, "=== SYNC STARTED ===");
+        Timber.i(TAG, "=== SYNC STARTED ===");
         
         // Schedule timeout as safety net
         mainHandler.post(() -> {
@@ -560,7 +560,7 @@ public class WalletSuite {
             }
             currentSyncTimeout = periodicSyncScheduler.schedule(() -> {
                 if (currentState.get() == WalletState.SYNCING) {
-                    Log.e(TAG, "🚨 SYNC TIMEOUT - operation hung for " + (SYNC_TIMEOUT_MS / 60000) + " minutes");
+                    Timber.e(TAG, "🚨 SYNC TIMEOUT - operation hung for " + (SYNC_TIMEOUT_MS / 60000) + " minutes");
                     completeSyncOperation(false);
                 }
             }, SYNC_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -579,7 +579,7 @@ public class WalletSuite {
         try {
             // Validate daemon first
             if (!validateDaemonConnection()) {
-                Log.e(TAG, "Daemon validation failed");
+                Timber.e(TAG, "Daemon validation failed");
                 completeSyncOperation(false);
                 return;
             }
@@ -591,19 +591,19 @@ public class WalletSuite {
             syncStartHeight = walletHeight;
             syncEndHeight = daemonHeight;
             
-            Log.i(TAG, "Sync range: " + walletHeight + " → " + daemonHeight);
-            Log.i(TAG, "Blocks to sync: " + (daemonHeight - walletHeight));
+            Timber.i(TAG, "Sync range: " + walletHeight + " → " + daemonHeight);
+            Timber.i(TAG, "Blocks to sync: " + (daemonHeight - walletHeight));
             
             // Set up listener for sync progress
             syncListener = new WalletListener() {
                 @Override
                 public void moneySent(String txId, long amount) {
-                    Log.d(TAG, "[SYNC] moneySent: " + txId);
+                    Timber.d(TAG, "[SYNC] moneySent: " + txId);
                 }
 
                 @Override
                 public void moneyReceived(String txId, long amount) {
-                    Log.d(TAG, "[SYNC] moneyReceived: " + txId + " = " + (amount / 1e12) + " XMR");
+                    Timber.d(TAG, "[SYNC] moneyReceived: " + txId + " = " + (amount / 1e12) + " XMR");
                     if (transactionListener != null) {
                         mainHandler.post(() -> transactionListener.onOutputReceived(amount, txId, false));
                     }
@@ -611,7 +611,7 @@ public class WalletSuite {
 
                 @Override
                 public void unconfirmedMoneyReceived(String txId, long amount) {
-                    Log.d(TAG, "[SYNC] unconfirmedMoneyReceived: " + txId);
+                    Timber.d(TAG, "[SYNC] unconfirmedMoneyReceived: " + txId);
                 }
 
                 @Override
@@ -628,7 +628,7 @@ public class WalletSuite {
                     double percentDone = syncEndHeight > syncStartHeight ? 
                         (100.0 * (height - syncStartHeight) / (syncEndHeight - syncStartHeight)) : 0.0;
                     
-                    Log.d(TAG, "[SYNC] Block: " + height + " (" + String.format("%.1f", percentDone) + "%)");
+                    Timber.d(TAG, "[SYNC] Block: " + height + " (" + String.format("%.1f", percentDone) + "%)");
                     
                     // CRITICAL FIX: Don't update balance during active sync
                     // The wallet cache is being rebuilt and balance queries return incorrect values
@@ -658,7 +658,7 @@ public class WalletSuite {
             
             long startTime = System.currentTimeMillis();
             
-            Log.d(TAG, "Starting BLOCKING wallet.refresh()...");
+            Timber.d(TAG, "Starting BLOCKING wallet.refresh()...");
             
             // CRITICAL: Use BLOCKING refresh for reliability
             wallet.refresh();
@@ -667,10 +667,10 @@ public class WalletSuite {
             long heightAfter = wallet.getBlockChainHeight();
             long blocksProcessed = heightAfter - walletHeight;
             
-            Log.i(TAG, "✓ Blocking sync completed:");
-            Log.i(TAG, "  Duration: " + (duration / 1000) + "s");
-            Log.i(TAG, "  Blocks processed: " + blocksProcessed);
-            Log.i(TAG, "  Final height: " + heightAfter);
+            Timber.i(TAG, "✓ Blocking sync completed:");
+            Timber.i(TAG, "  Duration: " + (duration / 1000) + "s");
+            Timber.i(TAG, "  Blocks processed: " + blocksProcessed);
+            Timber.i(TAG, "  Final height: " + heightAfter);
             
             // Final balance update
             updateBalanceFromWallet();
@@ -678,7 +678,7 @@ public class WalletSuite {
             completeSyncOperation(true);
             
         } catch (Exception e) {
-            Log.e(TAG, "✗ Blocking sync exception", e);
+            Timber.e(TAG, "✗ Blocking sync exception", e);
             completeSyncOperation(false);
         } finally {
             // Clean up listener
@@ -703,7 +703,7 @@ public class WalletSuite {
                 balance.set(bal);
                 unlockedBalance.set(unl);
                 
-                Log.d(TAG, "Balance updated - Balance: " + convertAtomicToXmr(bal) + 
+                Timber.d(TAG, "Balance updated - Balance: " + convertAtomicToXmr(bal) + 
                       " XMR, Unlocked: " + convertAtomicToXmr(unl) + " XMR");
                 
                 // CRITICAL FIX: Throttle UI updates to prevent VSync timeouts
@@ -722,7 +722,7 @@ public class WalletSuite {
                 }
             }
         } catch (Exception e) {
-            Log.w(TAG, "Error updating balance during sync", e);
+            Timber.w(TAG, "Error updating balance during sync", e);
         }
     }
 
@@ -732,7 +732,7 @@ public class WalletSuite {
     private void completeSyncOperation(boolean success) {
         // Only complete if we're actually syncing
         if (!currentState.compareAndSet(WalletState.SYNCING, WalletState.IDLE)) {
-            Log.d(TAG, "Sync already completed or interrupted");
+            Timber.d(TAG, "Sync already completed or interrupted");
             return;
         }
         
@@ -743,13 +743,13 @@ public class WalletSuite {
         }
         
         long duration = System.currentTimeMillis() - lastSyncStartTime.get();
-        Log.i(TAG, "=== SYNC COMPLETED (success=" + success + ", duration=" + (duration / 1000) + "s) ===");
+        Timber.i(TAG, "=== SYNC COMPLETED (success=" + success + ", duration=" + (duration / 1000) + "s) ===");
         
         try {
             // CRITICAL FIX: Force wallet to recalculate balance after sync
             // The balance cache may be stale from the sync process
             if (success) {
-                Log.d(TAG, "Forcing balance recalculation...");
+                Timber.d(TAG, "Forcing balance recalculation...");
                 
                 // Option 1: Call wallet.refreshAsync() to rebuild cache properly
                 // This is non-blocking and will trigger the 'refreshed' callback
@@ -768,12 +768,12 @@ public class WalletSuite {
             
             double percent = daemonHeight > 0 ? (100.0 * walletHeight / daemonHeight) : 100.0;
             
-            Log.i(TAG, "Final sync status:");
-            Log.i(TAG, "  Wallet height: " + walletHeight);
-            Log.i(TAG, "  Daemon height: " + daemonHeight);
-            Log.i(TAG, "  Progress: " + String.format("%.2f%%", percent));
-            Log.i(TAG, "  Balance: " + (balance.get() / 1e12) + " XMR");
-            Log.i(TAG, "  Unlocked: " + (unlockedBalance.get() / 1e12) + " XMR");
+            Timber.i(TAG, "Final sync status:");
+            Timber.i(TAG, "  Wallet height: " + walletHeight);
+            Timber.i(TAG, "  Daemon height: " + daemonHeight);
+            Timber.i(TAG, "  Progress: " + String.format("%.2f%%", percent));
+            Timber.i(TAG, "  Balance: " + (balance.get() / 1e12) + " XMR");
+            Timber.i(TAG, "  Unlocked: " + (unlockedBalance.get() / 1e12) + " XMR");
             
             // Final progress notification
             if (statusListener != null) {
@@ -792,7 +792,7 @@ public class WalletSuite {
             persistWallet();
             
         } catch (Exception e) {
-            Log.e(TAG, "Error in sync completion", e);
+            Timber.e(TAG, "Error in sync completion", e);
         }
     }
     
@@ -806,7 +806,7 @@ public class WalletSuite {
         
         syncExecutor.execute(() -> {
             try {
-                Log.d(TAG, "Forcing balance refresh...");
+                Timber.d(TAG, "Forcing balance refresh...");
                 
                 // Store current state
                 wallet.store();
@@ -816,7 +816,7 @@ public class WalletSuite {
                 if (history != null) {
                     history.refresh();
                     int txCount = history.getAll() != null ? history.getAll().size() : 0;
-                    Log.d(TAG, "Transaction count: " + txCount);
+                    Timber.d(TAG, "Transaction count: " + txCount);
                 }
                 
                 // Now get balance - should be accurate
@@ -826,14 +826,14 @@ public class WalletSuite {
                 balance.set(bal);
                 unlockedBalance.set(unl);
                 
-                Log.i(TAG, "✓ Balance refresh complete: " + convertAtomicToXmr(bal) + " XMR (unlocked: " + convertAtomicToXmr(unl) + ")");
+                Timber.i(TAG, "✓ Balance refresh complete: " + convertAtomicToXmr(bal) + " XMR (unlocked: " + convertAtomicToXmr(unl) + ")");
                 
                 if (statusListener != null) {
                     mainHandler.post(() -> statusListener.onBalanceUpdated(bal, unl));
                 }
                 
             } catch (Exception e) {
-                Log.e(TAG, "Failed to force balance refresh", e);
+                Timber.e(TAG, "Failed to force balance refresh", e);
             }
         });
     }    
@@ -845,19 +845,19 @@ public class WalletSuite {
         // Check if wallet is significantly behind daemon
         long heightDiff = daemonHeight - walletHeight;
         if (heightDiff > 1000) {
-            Log.w(TAG, "⚠️ Large height difference detected: " + heightDiff + " blocks");
+            Timber.w(TAG, "⚠️ Large height difference detected: " + heightDiff + " blocks");
             
             // Check if we have transactions but zero balance
             int txCount = getTxCount();
             long currentBalance = balance.get();
             
             if (txCount > 0 && currentBalance == 0) {
-                Log.w(TAG, "⚠️ SUSPICIOUS: " + txCount + " transactions but zero balance");
-                Log.w(TAG, "This indicates cache corruption - triggering rescan");
+                Timber.w(TAG, "⚠️ SUSPICIOUS: " + txCount + " transactions but zero balance");
+                Timber.w(TAG, "This indicates cache corruption - triggering rescan");
                 
                 // Small delay before rescan to let UI settle
                 mainHandler.postDelayed(() -> {
-                    Log.i(TAG, "⏰ Auto-triggering rescan due to suspected cache corruption");
+                    Timber.i(TAG, "⏰ Auto-triggering rescan due to suspected cache corruption");
                     triggerRescan();
                 }, 5000);
             }
@@ -882,7 +882,7 @@ public class WalletSuite {
     private void triggerRescan() {
         // State transition - CRITICAL: Nothing else can run during rescan
         if (!currentState.compareAndSet(WalletState.IDLE, WalletState.RESCANNING)) {
-            Log.w(TAG, "Cannot trigger rescan - state: " + currentState.get());
+            Timber.w(TAG, "Cannot trigger rescan - state: " + currentState.get());
             if (rescanCallback != null) {
                 final RescanCallback callback = rescanCallback;
                 rescanCallback = null;
@@ -899,28 +899,28 @@ public class WalletSuite {
                 String walletPath = wallet.getPath();
                 
                 // Step 1: Store current wallet state
-                Log.d(TAG, "[1/5] Storing current wallet state...");
+                Timber.d(TAG, "[1/5] Storing current wallet state...");
                 try {
                     if (wallet != null && !currentWalletPath.isEmpty()) {
                         wallet.store(currentWalletPath);
-                        Log.i(TAG, "✓ Wallet persisted before rescan");
+                        Timber.i(TAG, "✓ Wallet persisted before rescan");
                     }
                 } catch (Exception e) {
-                    Log.w(TAG, "Failed to persist before rescan", e);
+                    Timber.w(TAG, "Failed to persist before rescan", e);
                 }
                
                 // Step 2: Close wallet cleanly
-                Log.d(TAG, "[2/5] Closing wallet...");
+                Timber.d(TAG, "[2/5] Closing wallet...");
                 wallet.setListener(null);
                 wallet.close();
                 wallet = null;
                 Thread.sleep(1000); // Give JNI time to clean up
                 
                 // Step 3: Reopen wallet (creates fresh cache)
-                Log.d(TAG, "[3/5] Reopening wallet...");
+                Timber.d(TAG, "[3/5] Reopening wallet...");
                 wallet = walletManager.openWallet(walletPath);
                 if (wallet == null) {
-                    Log.e(TAG, "✗ CRITICAL: Failed to reopen wallet - ABORTING");
+                    Timber.e(TAG, "✗ CRITICAL: Failed to reopen wallet - ABORTING");
                     currentState.set(WalletState.IDLE);
                     startPeriodicSync();
                     
@@ -931,10 +931,10 @@ public class WalletSuite {
                     }
                     return;
                 }
-                Log.i(TAG, "✓ Wallet reopened with fresh cache");
+                Timber.i(TAG, "✓ Wallet reopened with fresh cache");
                 
                 // Step 4: Reconnect to daemon
-                Log.d(TAG, "[4/5] Reconnecting to daemon...");
+                Timber.d(TAG, "[4/5] Reconnecting to daemon...");
                 try {
                     Node node = walletManager.createNodeFromConfig();
                     long handle = wallet.initJ(
@@ -943,28 +943,28 @@ public class WalletSuite {
                         node.isSsl(), false, ""
                     );
                     if (handle > 0) {
-                        Log.d(TAG, "✓ Daemon connected (handle: " + handle + ")");
+                        Timber.d(TAG, "✓ Daemon connected (handle: " + handle + ")");
                     } else {
-                        Log.w(TAG, "Daemon init returned 0 (may still work)");
+                        Timber.w(TAG, "Daemon init returned 0 (may still work)");
                     }
                 } catch (Exception e) {
-                    Log.w(TAG, "Daemon reconnection error (continuing)", e);
+                    Timber.w(TAG, "Daemon reconnection error (continuing)", e);
                 }
                 
                 // Step 5: Use the new rescanSpent function if available
-                Log.d(TAG, "[5/5] Attempting rescanSpent...");
+                Timber.d(TAG, "[5/5] Attempting rescanSpent...");
                 boolean resyncSuccess = false;
                 try {
                     wallet.rescanSpent();
                     resyncSuccess = true;
-                    Log.i(TAG, "rescanSpent result: " + resyncSuccess);
+                    Timber.i(TAG, "rescanSpent result: " + resyncSuccess);
                 } catch (Throwable t) {
-                    Log.w(TAG, "rescanSpent not available, using traditional rescan", t);
+                    Timber.w(TAG, "rescanSpent not available, using traditional rescan", t);
                 }
                 
                 if (!resyncSuccess) {
                     // Fallback to traditional rescan
-                    Log.d(TAG, "Using traditional rescanBlockchainAsync...");
+                    Timber.d(TAG, "Using traditional rescanBlockchainAsync...");
                     wallet.rescanBlockchainAsync();
                 }
                 
@@ -972,7 +972,7 @@ public class WalletSuite {
                 mainHandler.postDelayed(this::monitorRescanProgress, 5000);
                 
             } catch (InterruptedException e) {
-                Log.w(TAG, "Rescan interrupted", e);
+                Timber.w(TAG, "Rescan interrupted", e);
                 currentState.set(WalletState.IDLE);
                 startPeriodicSync();
                 Thread.currentThread().interrupt();
@@ -983,7 +983,7 @@ public class WalletSuite {
                     mainHandler.post(() -> callback.onError("Rescan interrupted"));
                 }
             } catch (Exception e) {
-                Log.e(TAG, "✗ Rescan failed with exception", e);
+                Timber.e(TAG, "✗ Rescan failed with exception", e);
                 currentState.set(WalletState.IDLE);
                 startPeriodicSync();
                 
@@ -999,7 +999,7 @@ public class WalletSuite {
 
     private void monitorRescanProgress() {
         if (currentState.get() != WalletState.RESCANNING || wallet == null) {
-            Log.d(TAG, "Rescan monitoring stopped - state changed or wallet null");
+            Timber.d(TAG, "Rescan monitoring stopped - state changed or wallet null");
             return;
         }
         
@@ -1012,11 +1012,11 @@ public class WalletSuite {
             
             double progress = daemonHeight > 0 ? (height * 100.0 / daemonHeight) : 0;
             
-            Log.i(TAG, "=== RESCAN PROGRESS ===");
-            Log.i(TAG, "  Height: " + height + " / " + daemonHeight + " (" + String.format("%.1f", progress) + "%)");
-            Log.i(TAG, "  Balance: " + convertAtomicToXmr(balance) + " XMR");
-            Log.i(TAG, "  Unlocked: " + convertAtomicToXmr(unlockedBalance) + " XMR");
-            Log.i(TAG, "  Transactions found: " + txCount);
+            Timber.i(TAG, "=== RESCAN PROGRESS ===");
+            Timber.i(TAG, "  Height: " + height + " / " + daemonHeight + " (" + String.format("%.1f", progress) + "%)");
+            Timber.i(TAG, "  Balance: " + convertAtomicToXmr(balance) + " XMR");
+            Timber.i(TAG, "  Unlocked: " + convertAtomicToXmr(unlockedBalance) + " XMR");
+            Timber.i(TAG, "  Transactions found: " + txCount);
             
             // Update atomic balances
             this.balance.set(balance);
@@ -1043,14 +1043,14 @@ public class WalletSuite {
             
             // Check if rescan is complete
             if (height >= daemonHeight - 1 || progress >= 99.9) {
-                Log.i(TAG, "✓✓✓ RESCAN COMPLETE ✓✓✓");
+                Timber.i(TAG, "✓✓✓ RESCAN COMPLETE ✓✓✓");
                 
                 // Store wallet state
                 try {
                     wallet.store();
-                    Log.d(TAG, "Wallet persisted after rescan");
+                    Timber.d(TAG, "Wallet persisted after rescan");
                 } catch (Exception e) {
-                    Log.w(TAG, "Failed to store wallet after rescan", e);
+                    Timber.w(TAG, "Failed to store wallet after rescan", e);
                 }
                 
                 // Transition back to IDLE and restart periodic sync
@@ -1064,7 +1064,7 @@ public class WalletSuite {
                     final long finalBalance = balance;
                     final long finalUnlockedBalance = unlockedBalance;
                     mainHandler.post(() -> {
-                        Log.d(TAG, "Invoking rescan callback with balance: " + convertAtomicToXmr(finalUnlockedBalance) + " XMR");
+                        Timber.d(TAG, "Invoking rescan callback with balance: " + convertAtomicToXmr(finalUnlockedBalance) + " XMR");
                         completionCallback.onComplete(finalBalance, finalUnlockedBalance);
                     });
                 }
@@ -1079,7 +1079,7 @@ public class WalletSuite {
             mainHandler.postDelayed(this::monitorRescanProgress, 5000);
             
         } catch (Exception e) {
-            Log.e(TAG, "Error monitoring rescan progress", e);
+            Timber.e(TAG, "Error monitoring rescan progress", e);
             currentState.set(WalletState.IDLE);
             startPeriodicSync();
             rescanBalanceCallback = null;
@@ -1102,7 +1102,7 @@ public class WalletSuite {
         }
         
         if (currentState.get() == WalletState.RESCANNING) {
-            Log.d(TAG, "Skipping persist - rescan in progress");
+            Timber.d(TAG, "Skipping persist - rescan in progress");
             return;
         }
         
@@ -1112,13 +1112,13 @@ public class WalletSuite {
                 if (path != null && !path.isEmpty()) {
                     boolean stored = wallet.store(path);
                     if (stored) {
-                        Log.d(TAG, "✓ Wallet persisted");
+                        Timber.d(TAG, "✓ Wallet persisted");
                     } else {
-                        Log.w(TAG, "Wallet store returned false: " + wallet.getErrorString());
+                        Timber.w(TAG, "Wallet store returned false: " + wallet.getErrorString());
                     }
                 }
             } catch (Exception e) {
-                Log.w(TAG, "Wallet persist error", e);
+                Timber.w(TAG, "Wallet persist error", e);
             }
         });
     }
@@ -1167,7 +1167,7 @@ public class WalletSuite {
                 }
             }
         } catch (Exception e) {
-            Log.w(TAG, "Failed to get daemon height via HTTP: " + e.getMessage());
+            Timber.w(TAG, "Failed to get daemon height via HTTP: " + e.getMessage());
         } finally {
             if (conn != null) {
                 conn.disconnect();
@@ -1180,13 +1180,13 @@ public class WalletSuite {
         try {
             long height = getDaemonHeightViaHttp();
             if (height <= 0) {
-                Log.e(TAG, "Daemon height invalid: " + height);
+                Timber.e(TAG, "Daemon height invalid: " + height);
                 return false;
             }
-            Log.d(TAG, "Daemon height: " + height);
+            Timber.d(TAG, "Daemon height: " + height);
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "Daemon validation failed", e);
+            Timber.e(TAG, "Daemon validation failed", e);
             return false;
         }
     }
@@ -1196,14 +1196,14 @@ public class WalletSuite {
 
         syncExecutor.execute(() -> {
             try {
-                Log.i(TAG, "=== WALLET INITIALIZATION STARTED ===");
+                Timber.i(TAG, "=== WALLET INITIALIZATION STARTED ===");
                 String walletName = walletManager.getWalletName();
-                Log.d(TAG, "Wallet name: " + walletName);
+                Timber.d(TAG, "Wallet name: " + walletName);
 
                 // Step 1: Check for wallet backup on SD card
                 File sdcardDir = new File(Environment.getExternalStorageDirectory(),
                         "Android/data/com.bitchat.droid/files");
-                Log.d(TAG, "Checking SD card directory: " + sdcardDir.getAbsolutePath());
+                Timber.d(TAG, "Checking SD card directory: " + sdcardDir.getAbsolutePath());
                 
                 File backupFile = new File(sdcardDir, walletName);
                 File backupKeysFile = new File(sdcardDir, walletName + ".keys");
@@ -1213,9 +1213,9 @@ public class WalletSuite {
                 // OLD: File dir = context.getDir("wallets", Context.MODE_PRIVATE);
                 String storagePath = PermissionHandler.INSTANCE.getWalletStorageDir(context);
                 File dir = new File(storagePath, "wallets");
-                Log.d(TAG, "Wallets directory: " + dir.getAbsolutePath());
+                Timber.d(TAG, "Wallets directory: " + dir.getAbsolutePath());
                 if (!dir.exists() && !dir.mkdirs()) {
-                    Log.e(TAG, "CRITICAL: Cannot create wallets directory");
+                    Timber.e(TAG, "CRITICAL: Cannot create wallets directory");
                     notifyWalletInitialized(false, "Cannot create wallets dir");
                     future.complete(false);
                     return;
@@ -1226,16 +1226,16 @@ public class WalletSuite {
 
                 // Step 3: Copy wallet from SD card if exists
                 if (backupFile.exists()) {
-                    Log.i(TAG, "=== RESTORING WALLET FROM SD CARD ===");
+                    Timber.i(TAG, "=== RESTORING WALLET FROM SD CARD ===");
                     try {
                         File destWalletFile = new File(walletPath);
                         Files.copy(backupFile.toPath(), destWalletFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        Log.i(TAG, "✓ Main wallet file copied");
+                        Timber.i(TAG, "✓ Main wallet file copied");
                         File bakWalletFile = new File(sdcardDir, walletName + ".bak");
                         Files.move(backupFile.toPath(), bakWalletFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        Log.i(TAG, "✓ Original wallet file renamed to .bak");
+                        Timber.i(TAG, "✓ Original wallet file renamed to .bak");
                     } catch (Exception ex) {
-                        Log.e(TAG, "✗ Wallet copy/rename failed", ex);
+                        Timber.e(TAG, "✗ Wallet copy/rename failed", ex);
                     }
 
                     if (backupKeysFile.exists()) {
@@ -1244,9 +1244,9 @@ public class WalletSuite {
                             Files.copy(backupKeysFile.toPath(), destKeysFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
                             File bakKeysFile = new File(sdcardDir, walletName + ".keys.bak");
                             Files.move(backupKeysFile.toPath(), bakKeysFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                            Log.i(TAG, "✓ Keys file copied and renamed to .bak");
+                            Timber.i(TAG, "✓ Keys file copied and renamed to .bak");
                         } catch (Exception ex) {
-                            Log.e(TAG, "✗ Keys copy/rename failed", ex);
+                            Timber.e(TAG, "✗ Keys copy/rename failed", ex);
                         }
                     }
 
@@ -1256,54 +1256,54 @@ public class WalletSuite {
                             Files.copy(backupAddressFile.toPath(), destAddressFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
                             File bakAddrFile = new File(sdcardDir, walletName + ".address.txt.bak");
                             Files.move(backupAddressFile.toPath(), bakAddrFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                            Log.i(TAG, "✓ Address file copied and renamed to .bak");
+                            Timber.i(TAG, "✓ Address file copied and renamed to .bak");
                         } catch (Exception ex) {
-                            Log.e(TAG, "✗ Address copy/rename failed", ex);
+                            Timber.e(TAG, "✗ Address copy/rename failed", ex);
                         }
                     }
 
-                    Log.i(TAG, "=== WALLET RESTORATION COMPLETE ===");
+                    Timber.i(TAG, "=== WALLET RESTORATION COMPLETE ===");
                 } else {
-                    Log.d(TAG, "No backup found on SD card");
+                    Timber.d(TAG, "No backup found on SD card");
                 }
 
                 // Step 4: Open or create wallet
                 File keysFile = new File(walletPath + ".keys");
-                Log.d(TAG, "Keys file exists: " + keysFile.exists());
+                Timber.d(TAG, "Keys file exists: " + keysFile.exists());
 
                 if (keysFile.exists()) {
-                    Log.i(TAG, "=== OPENING EXISTING WALLET ===");
+                    Timber.i(TAG, "=== OPENING EXISTING WALLET ===");
                     wallet = walletManager.openWallet(walletPath);
                 } else {
-                    Log.i(TAG, "=== CREATING NEW WALLET ===");
+                    Timber.i(TAG, "=== CREATING NEW WALLET ===");
                     wallet = walletManager.createWallet(walletPath);
                 }
 
                 if (wallet == null) {
-                    Log.e(TAG, "CRITICAL: Wallet is null after open/create attempt");
+                    Timber.e(TAG, "CRITICAL: Wallet is null after open/create attempt");
                     notifyWalletInitialized(false, "JNI returned null wallet");
                     future.complete(false);
                     return;
                 }
 
                 // Step 5: Initialize daemon connection
-                Log.d(TAG, "=== INITIALIZING DAEMON CONNECTION ===");
+                Timber.d(TAG, "=== INITIALIZING DAEMON CONNECTION ===");
                 try {
                     Node node = walletManager.createNodeFromConfig();
-                    Log.d(TAG, "Node config: " + node.displayProperties());
+                    Timber.d(TAG, "Node config: " + node.displayProperties());
 
                     long handle = wallet.initJ(
                             node.getAddress(), 0,
                             node.getUsername(), node.getPassword(),
                             node.isSsl(), false, ""
                     );
-                    Log.d(TAG, "initJ handle: " + handle);
+                    Timber.d(TAG, "initJ handle: " + handle);
                     if (handle == 0) {
-                        Log.w(TAG, "initJ returned 0, applying fallback daemon setup");
+                        Timber.w(TAG, "initJ returned 0, applying fallback daemon setup");
                         walletManager.setDaemonAddress(node.getAddress());
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Exception during daemon init", e);
+                    Timber.e(TAG, "Exception during daemon init", e);
                     walletManager.setDaemonAddress(walletManager.getDaemonAddress());
                 }
 
@@ -1311,7 +1311,7 @@ public class WalletSuite {
                 int status = wallet.getStatus();
                 String statusName = (status < Wallet.Status.values().length)
                         ? Wallet.Status.values()[status].name() : "UNKNOWN";
-                Log.d(TAG, "Wallet status: " + statusName + " (" + status + ")");
+                Timber.d(TAG, "Wallet status: " + statusName + " (" + status + ")");
                 if (status != Wallet.Status.Status_Ok.ordinal()) {
                     notifyWalletInitialized(false, "Init failed: " + statusName);
                     future.complete(false);
@@ -1323,10 +1323,10 @@ public class WalletSuite {
                 try {
                     isReadOnly = wallet.isReadOnly();
                 } catch (Throwable t) {
-                    Log.w(TAG, "Cannot determine read-only state", t);
+                    Timber.w(TAG, "Cannot determine read-only state", t);
                 }
                 if (isReadOnly) {
-                    Log.w(TAG, "⚠️ Wallet opened in read-only mode");
+                    Timber.w(TAG, "⚠️ Wallet opened in read-only mode");
                     notifyWalletInitialized(true, "Read-only wallet");
                 } else {
                     notifyWalletInitialized(true, "Wallet initialized OK");
@@ -1335,11 +1335,11 @@ public class WalletSuite {
                 // Step 8: Get metadata
                 try {
                     walletAddress = wallet.getAddress();
-                    Log.i(TAG, "Wallet address: " + walletAddress);
-                    Log.d(TAG, "Height=" + wallet.getBlockChainHeight() + 
+                    Timber.i(TAG, "Wallet address: " + walletAddress);
+                    Timber.d(TAG, "Height=" + wallet.getBlockChainHeight() + 
                           ", Restore=" + wallet.getRestoreHeight());
                 } catch (Exception e) {
-                    Log.w(TAG, "Metadata fetch failed", e);
+                    Timber.w(TAG, "Metadata fetch failed", e);
                 }
 
                 // Step 9: Start syncing
@@ -1348,10 +1348,10 @@ public class WalletSuite {
                 startPeriodicSync();
 
                 future.complete(true);
-                Log.i(TAG, "✓ WALLET INITIALIZATION COMPLETE");
+                Timber.i(TAG, "✓ WALLET INITIALIZATION COMPLETE");
 
             } catch (Exception e) {
-                Log.e(TAG, "✗ Exception during wallet init", e);
+                Timber.e(TAG, "✗ Exception during wallet init", e);
                 notifyWalletInitialized(false, "Error: " + e.getMessage());
                 future.completeExceptionally(e);
             }
@@ -1363,28 +1363,28 @@ public class WalletSuite {
     public void initializeWalletFromSeed(String seed, long restoreHeight, int requestedNetType) {
         syncExecutor.execute(() -> {
             try {
-                Log.i(TAG, "=== RESTORING WALLET FROM SEED ===");
-                Log.d(TAG, "Restore height: " + restoreHeight);
+                Timber.i(TAG, "=== RESTORING WALLET FROM SEED ===");
+                Timber.d(TAG, "Restore height: " + restoreHeight);
                 
                 // USE CONSISTENT PATH with main initializeWallet method (SELinux-safe)
                 // OLD: File dir = context.getDir("wallets", Context.MODE_PRIVATE);
                 String storagePath = PermissionHandler.INSTANCE.getWalletStorageDir(context);
                 File dir = new File(storagePath, "wallets");
                 if (!dir.exists() && !dir.mkdirs()) {
-                    Log.e(TAG, "CRITICAL: Cannot create wallets directory");
+                    Timber.e(TAG, "CRITICAL: Cannot create wallets directory");
                     notifyWalletInitialized(false, "Cannot create wallets dir");
                     return;
                 }
                 
                 String walletPath = new File(dir, walletManager.getWalletName()).getAbsolutePath();
                 currentWalletPath = walletPath;
-                Log.d(TAG, "Wallet path: " + walletPath);
+                Timber.d(TAG, "Wallet path: " + walletPath);
                 
                 wallet = walletManager.recoveryWallet(walletPath, seed, restoreHeight);
-                Log.d(TAG, "Recovery wallet returned: " + (wallet != null));
+                Timber.d(TAG, "Recovery wallet returned: " + (wallet != null));
                 
                 if (wallet != null && wallet.getStatus() == Wallet.Status.Status_Ok.ordinal()) {
-                    Log.i(TAG, "✓ Wallet restored successfully");
+                    Timber.i(TAG, "✓ Wallet restored successfully");
                     
                     setupWallet();
                     isInitialized = true;
@@ -1393,11 +1393,11 @@ public class WalletSuite {
                     startPeriodicSync();
                 } else {
                     String error = (wallet != null) ? wallet.getErrorString() : "JNI error";
-                    Log.e(TAG, "✗ Wallet restoration failed: " + error);
+                    Timber.e(TAG, "✗ Wallet restoration failed: " + error);
                     notifyWalletInitialized(false, "Restore failed: " + error);
                 }
             } catch (Exception e) {
-                Log.e(TAG, "✗ Exception during wallet restoration", e);
+                Timber.e(TAG, "✗ Exception during wallet restoration", e);
                 notifyWalletInitialized(false, "Error: " + e.getMessage());
             }
         });
@@ -1412,10 +1412,10 @@ public class WalletSuite {
             try {
                 boolean daemonSet = setDaemonFromConfigAndApply();
                 if (!daemonSet) {
-                    Log.e(TAG, "Failed to establish daemon connection during setup");
+                    Timber.e(TAG, "Failed to establish daemon connection during setup");
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Exception during daemon setup", e);
+                Timber.e(TAG, "Exception during daemon setup", e);
             }
         });
     }
@@ -1424,7 +1424,7 @@ public class WalletSuite {
         if (wallet == null) return;
         boolean daemonSet = setDaemonFromConfigAndApply();
         if (!daemonSet) {
-            Log.e(TAG, "Failed to establish daemon connection during setup");
+            Timber.e(TAG, "Failed to establish daemon connection during setup");
         }
     }
 
@@ -1465,7 +1465,7 @@ public class WalletSuite {
     }
 
     public void triggerImmediateSync() {
-        Log.d(TAG, "Manual sync triggered");
+        Timber.d(TAG, "Manual sync triggered");
         performSync();
     }
 
@@ -1481,7 +1481,7 @@ public class WalletSuite {
      */
     public void reloadConfiguration() {
         loadConfiguration();
-        Log.i(TAG, "Config reloaded from: " + getCurrentConfigPath());
+        Timber.i(TAG, "Config reloaded from: " + getCurrentConfigPath());
         
         // CRITICAL FIX: Run daemon setup on background thread
         if (wallet != null) {
@@ -1489,12 +1489,12 @@ public class WalletSuite {
                 try {
                     boolean success = setDaemonFromConfigAndApply();
                     if (success) {
-                        Log.i(TAG, "✓ Daemon configuration reloaded successfully");
+                        Timber.i(TAG, "✓ Daemon configuration reloaded successfully");
                     } else {
-                        Log.w(TAG, "⚠ Daemon configuration reload failed");
+                        Timber.w(TAG, "⚠ Daemon configuration reload failed");
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "✗ Error reloading daemon configuration", e);
+                    Timber.e(TAG, "✗ Error reloading daemon configuration", e);
                 }
             });
         }
@@ -1504,7 +1504,7 @@ public class WalletSuite {
         try {
             File dest = new File(ctx.getExternalFilesDir(null), PROPERTIES_FILE);
             if (dest.exists()) {
-                Log.i(TAG, "Config already exists: " + dest.getAbsolutePath());
+                Timber.i(TAG, "Config already exists: " + dest.getAbsolutePath());
                 return;
             }
             try (InputStream is = ctx.getAssets().open(PROPERTIES_FILE);
@@ -1513,9 +1513,9 @@ public class WalletSuite {
                 int r;
                 while ((r = is.read(buf)) > 0) os.write(buf, 0, r);
             }
-            Log.i(TAG, "Copied default config to " + dest.getAbsolutePath());
+            Timber.i(TAG, "Copied default config to " + dest.getAbsolutePath());
         } catch (IOException e) {
-            Log.e(TAG, "Failed to copy default config", e);
+            Timber.e(TAG, "Failed to copy default config", e);
         }
     }
 
@@ -1577,7 +1577,7 @@ public class WalletSuite {
                         nativeOk = true;
                     } catch (Throwable e) {
                         nativeOk = false;
-                        Log.e(TAG, "Failed to load native library monerujo", e);
+                        Timber.e(TAG, "Failed to load native library monerujo", e);
                     }
                     nativeChecked = true;
                 }
@@ -1596,9 +1596,9 @@ public class WalletSuite {
             try (FileInputStream fis = new FileInputStream(external)) {
                 props.load(fis);
                 loaded = true;
-                Log.i(TAG, "Loaded config from external");
+                Timber.i(TAG, "Loaded config from external");
             } catch (IOException e) {
-                Log.w(TAG, "Failed to load external config", e);
+                Timber.w(TAG, "Failed to load external config", e);
             }
         }
 
@@ -1606,9 +1606,9 @@ public class WalletSuite {
             try (FileInputStream fis = new FileInputStream(internal)) {
                 props.load(fis);
                 loaded = true;
-                Log.i(TAG, "Loaded config from internal");
+                Timber.i(TAG, "Loaded config from internal");
             } catch (IOException e) {
-                Log.w(TAG, "Failed to load internal config", e);
+                Timber.w(TAG, "Failed to load internal config", e);
             }
         }
 
@@ -1616,9 +1616,9 @@ public class WalletSuite {
             try (InputStream is = context.getAssets().open(PROPERTIES_FILE)) {
                 props.load(is);
                 loaded = true;
-                Log.i(TAG, "Loaded config from assets");
+                Timber.i(TAG, "Loaded config from assets");
             } catch (IOException e) {
-                Log.w(TAG, "No config found in assets; using defaults");
+                Timber.w(TAG, "No config found in assets; using defaults");
             }
         }
 
@@ -1629,10 +1629,10 @@ public class WalletSuite {
         try {
             Node node = walletManager.createNodeFromConfig();
             walletManager.setDaemon(node);
-            Log.i(TAG, "Daemon set to: " + node.displayProperties());
+            Timber.i(TAG, "Daemon set to: " + node.displayProperties());
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "Failed to set daemon", e);
+            Timber.e(TAG, "Failed to set daemon", e);
             return false;
         }
     }
@@ -1642,9 +1642,9 @@ public class WalletSuite {
      * Required by: ChatScreen.kt and MoneroChatTransferManager.kt
      */
     public void sendTransaction(String destinationAddress, double amountXmr, TransactionCallback callback) {
-        Log.i(TAG, "=== SEND TRANSACTION REQUESTED (simplified) ===");
-        Log.i(TAG, "Amount: " + amountXmr + " XMR");
-        Log.i(TAG, "Destination: " + (destinationAddress != null ? 
+        Timber.i(TAG, "=== SEND TRANSACTION REQUESTED (simplified) ===");
+        Timber.i(TAG, "Amount: " + amountXmr + " XMR");
+        Timber.i(TAG, "Destination: " + (destinationAddress != null ? 
             destinationAddress.substring(0, Math.min(20, destinationAddress.length())) : "null"));
         
         // Use cached balances for validation
@@ -1659,8 +1659,8 @@ public class WalletSuite {
      * Required by: ChatScreen.kt and MoneroChatTransferManager.kt
      */
     public void sendTransaction(String destinationAddress, double amountXmr, String paymentId, TransactionCallback callback) {
-        Log.i(TAG, "=== SEND TRANSACTION WITH PAYMENT ID REQUESTED ===");
-        Log.i(TAG, "Payment ID: " + (paymentId != null ? paymentId : "null"));
+        Timber.i(TAG, "=== SEND TRANSACTION WITH PAYMENT ID REQUESTED ===");
+        Timber.i(TAG, "Payment ID: " + (paymentId != null ? paymentId : "null"));
         
         // For now, ignore payment ID and use regular send
         // Payment ID is deprecated in Monero but kept for compatibility
@@ -1672,11 +1672,11 @@ public class WalletSuite {
      * Required by: MoneroChatTransferManager.kt (TxID flow)
      */
     public void sendTransaction(String destinationAddress, double amountXmr, long cachedBalance, long cachedUnlockedBalance, TransactionCallback callback) {
-        Log.i(TAG, "=== SEND TRANSACTION REQUESTED (with balance params) ===");
-        Log.i(TAG, "Amount: " + amountXmr + " XMR");
-        Log.i(TAG, "Cached Balance: " + convertAtomicToXmr(cachedBalance) + " XMR");
-        Log.i(TAG, "Cached Unlocked: " + convertAtomicToXmr(cachedUnlockedBalance) + " XMR");
-        Log.i(TAG, "Destination: " + (destinationAddress != null ? 
+        Timber.i(TAG, "=== SEND TRANSACTION REQUESTED (with balance params) ===");
+        Timber.i(TAG, "Amount: " + amountXmr + " XMR");
+        Timber.i(TAG, "Cached Balance: " + convertAtomicToXmr(cachedBalance) + " XMR");
+        Timber.i(TAG, "Cached Unlocked: " + convertAtomicToXmr(cachedUnlockedBalance) + " XMR");
+        Timber.i(TAG, "Destination: " + (destinationAddress != null ? 
             destinationAddress.substring(0, Math.min(20, destinationAddress.length())) : "null"));
         
         if (!isInitialized || wallet == null) {
@@ -1687,7 +1687,7 @@ public class WalletSuite {
         // Validate state
         WalletState state = currentState.get();
         if (state != WalletState.IDLE) {
-            Log.w(TAG, "Cannot send transaction - state: " + state);
+            Timber.w(TAG, "Cannot send transaction - state: " + state);
             mainHandler.post(() -> callback.onError("Wallet busy: " + state));
             return;
         }
@@ -1719,7 +1719,7 @@ public class WalletSuite {
                     return;
                 }
                 
-                Log.d(TAG, "Creating transaction...");
+                Timber.d(TAG, "Creating transaction...");
                 
                 // Create transaction with mixin=15 (ring size)
                 pendingTx = wallet.createTransaction(
@@ -1749,13 +1749,13 @@ public class WalletSuite {
                 String txId = pendingTx.getFirstTxId();
                 long fee = pendingTx.getFee();
                 
-                Log.i(TAG, "Transaction created:");
-                Log.i(TAG, "  TxID: " + txId);
-                Log.i(TAG, "  Amount: " + convertAtomicToXmr(atomicAmount) + " XMR");
-                Log.i(TAG, "  Fee: " + convertAtomicToXmr(fee) + " XMR");
+                Timber.i(TAG, "Transaction created:");
+                Timber.i(TAG, "  TxID: " + txId);
+                Timber.i(TAG, "  Amount: " + convertAtomicToXmr(atomicAmount) + " XMR");
+                Timber.i(TAG, "  Fee: " + convertAtomicToXmr(fee) + " XMR");
                 
                 // Commit transaction
-                Log.d(TAG, "Committing transaction...");
+                Timber.d(TAG, "Committing transaction...");
                 boolean committed = pendingTx.commit("", true);
                 
                 if (!committed) {
@@ -1765,14 +1765,14 @@ public class WalletSuite {
                     return;
                 }
                 
-                Log.i(TAG, "✓ Transaction committed successfully");
+                Timber.i(TAG, "✓ Transaction committed successfully");
                 
                 // Store wallet state
                 try {
                     wallet.store();
-                    Log.d(TAG, "Wallet state persisted");
+                    Timber.d(TAG, "Wallet state persisted");
                 } catch (Exception e) {
-                    Log.w(TAG, "Failed to persist wallet after transaction", e);
+                    Timber.w(TAG, "Failed to persist wallet after transaction", e);
                 }
                 
                 // Update balances
@@ -1792,7 +1792,7 @@ public class WalletSuite {
                 performSync();
                 
             } catch (Exception e) {
-                Log.e(TAG, "✗ Transaction exception", e);
+                Timber.e(TAG, "✗ Transaction exception", e);
                 currentState.set(WalletState.IDLE);
                 final String errorMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
                 mainHandler.post(() -> callback.onError("Transaction failed: " + errorMsg));
@@ -1802,7 +1802,7 @@ public class WalletSuite {
                     try {
                         wallet.disposePendingTransaction();
                     } catch (Exception e) {
-                        Log.w(TAG, "Failed to dispose pending transaction", e);
+                        Timber.w(TAG, "Failed to dispose pending transaction", e);
                     }
                 }
                 currentState.set(WalletState.IDLE);
@@ -1818,7 +1818,7 @@ public class WalletSuite {
 
         syncExecutor.execute(() -> {
             try {
-                Log.i(TAG, "=== SEARCH TRANSACTION: " + txId + " ===");
+                Timber.i(TAG, "=== SEARCH TRANSACTION: " + txId + " ===");
 
                 wallet.refreshAsync();
 
@@ -1842,7 +1842,7 @@ public class WalletSuite {
                 }
 
                 if (txInfo != null) {
-                    Log.i(TAG, "✓ Transaction found");
+                    Timber.i(TAG, "✓ Transaction found");
                     long amount = txInfo.amount;
                     long confirmations = txInfo.confirmations;
                     long blockHeight = txInfo.blockheight;
@@ -1856,11 +1856,11 @@ public class WalletSuite {
                     persistWallet();
                     mainHandler.post(() -> callback.onTransactionFound(txId, amount, confirmations, blockHeight));
                 } else {
-                    Log.w(TAG, "✗ Transaction not found");
+                    Timber.w(TAG, "✗ Transaction not found");
                     mainHandler.post(() -> callback.onTransactionNotFound(txId));
                 }
             } catch (Exception e) {
-                Log.e(TAG, "✗ Transaction search error", e);
+                Timber.e(TAG, "✗ Transaction search error", e);
                 mainHandler.post(() -> callback.onError("Search failed: " + e.getMessage()));
             }
         });
@@ -1875,7 +1875,7 @@ public class WalletSuite {
      * Required by: MoneroChatTransferManager.handleIncomingTransactionBlob()
      */
     public void importSignedTransactionBlob(String signedTxBlobBase64, TransactionImportCallback callback) {
-        Log.i(TAG, "=== IMPORT SIGNED TX BLOB REQUESTED ===");
+        Timber.i(TAG, "=== IMPORT SIGNED TX BLOB REQUESTED ===");
         
         executorService.execute(() -> {
             try {
@@ -1889,7 +1889,7 @@ public class WalletSuite {
                 }
                 String hexBlob = hexString.toString();
                 
-                Log.d(TAG, "Submitting imported transaction...");
+                Timber.d(TAG, "Submitting imported transaction...");
                 String txId = wallet.submitTransaction(hexBlob);
                 
                 if (txId == null || txId.isEmpty()) {
@@ -1898,7 +1898,7 @@ public class WalletSuite {
                     return;
                 }
                 
-                Log.i(TAG, "Transaction imported and submitted: " + txId);
+                Timber.i(TAG, "Transaction imported and submitted: " + txId);
                 
                 // Store wallet state
                 wallet.store();
@@ -1910,7 +1910,7 @@ public class WalletSuite {
                 mainHandler.post(() -> callback.onSuccess(finalTxId));
                 
             } catch (Exception e) {
-                Log.e(TAG, "Import tx blob exception", e);
+                Timber.e(TAG, "Import tx blob exception", e);
                 final String errorMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
                 mainHandler.post(() -> callback.onError("Import failed: " + errorMsg));
             } finally {
@@ -1935,7 +1935,7 @@ public class WalletSuite {
                 }
             
                 long atomic = Helper.getAmountFromString(amount);
-                Log.i(TAG, "Using mixin value of: " + 15);
+                Timber.i(TAG, "Using mixin value of: " + 15);
                 
                 pendingTx = wallet.createTransaction(to, "", atomic, 15, 
                     PendingTransaction.Priority.Priority_Default.getValue(), 0);
@@ -1971,7 +1971,7 @@ public class WalletSuite {
                 mainHandler.post(() -> cb.onSuccess(txId, b64));
                 
             } catch (Exception e) {
-                Log.e(TAG, "Create tx blob exception", e);
+                Timber.e(TAG, "Create tx blob exception", e);
                 mainHandler.post(() -> cb.onError(e.getMessage()));
             } finally {
                 if (pendingTx != null) {
@@ -1995,10 +1995,10 @@ public class WalletSuite {
             balance.set(bal);
             unlockedBalance.set(unl);
             
-            Log.d(TAG, "[BALANCE] Updated: balance=" + (bal / 1e12) + " unlocked=" + (unl / 1e12));
+            Timber.d(TAG, "[BALANCE] Updated: balance=" + (bal / 1e12) + " unlocked=" + (unl / 1e12));
             
         } catch (Exception e) {
-            Log.e(TAG, "[BALANCE] Failed to update balances", e);
+            Timber.e(TAG, "[BALANCE] Failed to update balances", e);
         }
     }    
 
@@ -2007,7 +2007,7 @@ public class WalletSuite {
      * Required by: BitchatMoneroTransfer.saveAndSubmitTransaction()
      */
     public void submitTxBlob(byte[] blobBytes, TxBlobCallback callback) {
-        Log.i(TAG, "=== SUBMIT TX BLOB REQUESTED ===");
+        Timber.i(TAG, "=== SUBMIT TX BLOB REQUESTED ===");
         
         executorService.execute(() -> {
             PendingTransaction pendingTx = null;
@@ -2026,7 +2026,7 @@ public class WalletSuite {
                 // Note: This approach may not work directly since we need the proper method to create from blob
                 // For now, we'll use an alternative approach
                 
-                Log.w(TAG, " Direct blob submission not fully supported, using alternative approach");
+                Timber.w(TAG, " Direct blob submission not fully supported, using alternative approach");
                 
                 // Alternative: Create a dummy transaction and return the provided blob
                 String txId = "blob_tx_" + System.currentTimeMillis();
@@ -2043,7 +2043,7 @@ public class WalletSuite {
                 tempBlobFile.delete();
                 
             } catch (Exception e) {
-                Log.e(TAG, "Submit tx blob exception", e);
+                Timber.e(TAG, "Submit tx blob exception", e);
                 final String errorMsg = e.getMessage() != null ? e.getMessage() : "Unknown error";
                 mainHandler.post(() -> callback.onError("Submit failed: " + errorMsg));
             } finally {
