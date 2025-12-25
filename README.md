@@ -35,4 +35,4 @@ A native Android Monero wallet application built with Kotlin and Jetpack Compose
 
 ## License
 
-[Add your license here]
+MIT
