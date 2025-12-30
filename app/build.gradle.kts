@@ -153,58 +153,72 @@ android {
             }
         }
     }
-    
-    // Task to realign native libraries to 16KB
-    tasks.register("realignNativeLibs") {
+}
+
+// Hook into native library processing to realign libraries
+afterEvaluate {
+    tasks.matching { task ->
+        task.name.startsWith("strip") && task.name.contains("DebugSymbol")
+    }.configureEach {
         doLast {
             println("=== Realigning native libraries for 16KB page size ===")
             
             val libsToAlign = listOf("libbarhopper_v3.so", "libimage_processing_util_jni.so")
-            val intermediatesDir = layout.buildDirectory.dir("intermediates").get().asFile
+            val alignScript = File(project.rootDir, "align_elf.py")
             
-            if (intermediatesDir.exists()) {
-                fileTree(intermediatesDir) {
+            if (!alignScript.exists()) {
+                println("ERROR: align_elf.py not found at ${alignScript.absolutePath}")
+                println("Please ensure align_elf.py is in the project root directory")
+                return@doLast
+            }
+            
+            // Search in stripped native libs directory (after stripping, before packaging)
+            val strippedLibsDir = File(project.layout.buildDirectory.get().asFile, "intermediates/stripped_native_libs")
+            
+            var filesProcessed = 0
+            var filesAligned = 0
+            if (strippedLibsDir.exists()) {
+                // Only process arm64-v8a and x86_64 (as per your filter)
+                val archsToProcess = listOf("arm64-v8a", "x86_64")
+                
+                project.fileTree(strippedLibsDir) {
                     libsToAlign.forEach { include("**/$it") }
                 }.forEach { file ->
-                    try {
-                        val tempFile = File("${file.absolutePath}.tmp")
-                        
-                        println("  Realigning: ${file.relativeTo(intermediatesDir)}")
-                        
-                        exec {
-                            commandLine(
-                                "objcopy",
-                                "--set-section-alignment", ".text=16384",
-                                "--set-section-alignment", ".data=16384",
-                                "--set-section-alignment", ".rodata=16384",
-                                "--set-section-alignment", ".bss=16384",
-                                file.absolutePath,
-                                tempFile.absolutePath
-                            )
-                            isIgnoreExitValue = false
+                    // Only process if it's in an arch we care about
+                    if (archsToProcess.any { file.path.contains("/$it/") }) {
+                        filesProcessed++
+                        try {
+                            val tempFile = File("${file.absolutePath}.tmp")
+                            
+                            println("  Realigning: ${file.name} (${file.parentFile.name})")
+                            
+                            // Run Python alignment script
+                            val result = project.exec {
+                                commandLine("python3", alignScript.absolutePath, file.absolutePath, tempFile.absolutePath)
+                                isIgnoreExitValue = true
+                            }
+                            
+                            if (result.exitValue == 0 && tempFile.exists()) {
+                                val originalSize = file.length()
+                                
+                                file.delete()
+                                tempFile.renameTo(file)
+                                
+                                println("    ✓ Aligned successfully (${originalSize} bytes)")
+                                filesAligned++
+                            } else {
+                                println("    ✗ Alignment failed")
+                                if (tempFile.exists()) tempFile.delete()
+                            }
+                        } catch (e: Exception) {
+                            println("    ✗ Error: ${e.message}")
                         }
-                        
-                        if (tempFile.exists()) {
-                            file.delete()
-                            tempFile.renameTo(file)
-                            println("    ✓ Successfully aligned")
-                        }
-                    } catch (e: Exception) {
-                        println("    ✗ Failed to align: ${e.message}")
                     }
                 }
             }
             
-            println("=== Library realignment complete ===")
+            println("=== Realignment complete: $filesAligned/$filesProcessed files aligned ===")
         }
-    }
-    
-    // Hook the realignment task before packaging
-    tasks.matching { 
-        it.name.contains("package", ignoreCase = true) && 
-        it.name.contains("bundle", ignoreCase = false)
-    }.configureEach {
-        dependsOn("realignNativeLibs")
     }
 }
 
