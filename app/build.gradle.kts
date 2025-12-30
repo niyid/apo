@@ -152,7 +152,60 @@ android {
                 it.systemProperty("robolectric.nativedeps.skip", "true")
             }
         }
-    }        
+    }
+    
+    // Task to realign native libraries to 16KB
+    tasks.register("realignNativeLibs") {
+        doLast {
+            println("=== Realigning native libraries for 16KB page size ===")
+            
+            val libsToAlign = listOf("libbarhopper_v3.so", "libimage_processing_util_jni.so")
+            val intermediatesDir = layout.buildDirectory.dir("intermediates").get().asFile
+            
+            if (intermediatesDir.exists()) {
+                fileTree(intermediatesDir) {
+                    libsToAlign.forEach { include("**/$it") }
+                }.forEach { file ->
+                    try {
+                        val tempFile = File("${file.absolutePath}.tmp")
+                        
+                        println("  Realigning: ${file.relativeTo(intermediatesDir)}")
+                        
+                        exec {
+                            commandLine(
+                                "objcopy",
+                                "--set-section-alignment", ".text=16384",
+                                "--set-section-alignment", ".data=16384",
+                                "--set-section-alignment", ".rodata=16384",
+                                "--set-section-alignment", ".bss=16384",
+                                file.absolutePath,
+                                tempFile.absolutePath
+                            )
+                            isIgnoreExitValue = false
+                        }
+                        
+                        if (tempFile.exists()) {
+                            file.delete()
+                            tempFile.renameTo(file)
+                            println("    ✓ Successfully aligned")
+                        }
+                    } catch (e: Exception) {
+                        println("    ✗ Failed to align: ${e.message}")
+                    }
+                }
+            }
+            
+            println("=== Library realignment complete ===")
+        }
+    }
+    
+    // Hook the realignment task before packaging
+    tasks.matching { 
+        it.name.contains("package", ignoreCase = true) && 
+        it.name.contains("bundle", ignoreCase = false)
+    }.configureEach {
+        dependsOn("realignNativeLibs")
+    }
 }
 
 protobuf {
