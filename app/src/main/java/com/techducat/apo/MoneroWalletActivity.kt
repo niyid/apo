@@ -165,7 +165,6 @@ class ChangeNowSwapService {
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
-            // FIX: Properly close connection to prevent resource leaks
             connection?.disconnect()
         }
     }
@@ -197,7 +196,6 @@ class ChangeNowSwapService {
                 refundAddress?.let { put("refundAddress", it) }
             }
             
-            // FIXED: Use 'use' to guarantee proper resource cleanup
             connection.outputStream.use { outputStream ->
                 OutputStreamWriter(outputStream).use { writer ->
                     writer.write(requestBody.toString())
@@ -225,7 +223,6 @@ class ChangeNowSwapService {
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
-            // Connection cleanup - all streams already closed by 'use'
             connection?.disconnect()
         }
     }
@@ -239,26 +236,22 @@ class MoneroWalletActivity : ComponentActivity() {
     private lateinit var walletSuite: WalletSuite
 
     override fun onCreate(savedInstanceState: Bundle?) {
-    // Install splash screen (Android 12+)
-    val splashScreen = installSplashScreen()
-    
-    super.onCreate(savedInstanceState)
-    
-    // CHECK PERMISSIONS FIRST
-    if (!PermissionHandler.hasStoragePermissions(this)) {
-        Timber.w("MoneroWallet", "Storage permissions not granted, requesting...")
-        PermissionHandler.requestStoragePermissions(this)
-    }
-    
-    // Log permission status for debugging SELinux issues
-    PermissionHandler.logPermissionStatus(this)
-    
-    // Keep splash screen visible while wallet initializes
-    var keepSplashOnScreen = true
-    splashScreen.setKeepOnScreenCondition { keepSplashOnScreen }
-    
-    walletSuite = WalletSuite.getInstance(this)
+        val splashScreen = installSplashScreen()
         
+        super.onCreate(savedInstanceState)
+        
+        if (!PermissionHandler.hasStoragePermissions(this)) {
+            Timber.w("MoneroWallet", "Storage permissions not granted, requesting...")
+            PermissionHandler.requestStoragePermissions(this)
+        }
+        
+        PermissionHandler.logPermissionStatus(this)
+        
+        var keepSplashOnScreen = true
+        splashScreen.setKeepOnScreenCondition { keepSplashOnScreen }
+        
+        walletSuite = WalletSuite.getInstance(this)
+            
         setContent {
             MoneroWalletTheme {
                 Surface(
@@ -270,16 +263,13 @@ class MoneroWalletActivity : ComponentActivity() {
             }
         }
         
-        // Hide splash screen after wallet is initialized
         lifecycleScope.launch {
-            delay(1500) // Minimum splash duration
+            delay(1500)
             keepSplashOnScreen = false
         }
     }
     
     override fun onDestroy() {
-        // CRITICAL FIX: Only close wallet if app is actually finishing
-        // Don't close on configuration changes or temporary activity destruction
         if (isFinishing) {
             Timber.d("MoneroWallet", "Activity finishing - closing wallet")
             try {
@@ -292,7 +282,6 @@ class MoneroWalletActivity : ComponentActivity() {
         }
         super.onDestroy()
     }
-
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -307,11 +296,9 @@ class MoneroWalletActivity : ComponentActivity() {
             grantResults,
             onGranted = {
                 Timber.i("MoneroWallet", "Storage permissions granted - wallet can proceed")
-                // Permissions granted - wallet initialization can proceed normally
             },
             onDenied = {
                 Timber.w("MoneroWallet", "Storage permissions denied - showing rationale")
-                // Show dialog explaining why permissions are needed
                 showPermissionDeniedDialog()
             }
         )
@@ -330,7 +317,6 @@ class MoneroWalletActivity : ComponentActivity() {
             .setCancelable(false)
             .show()
     }    
-    
 }
 
 @Composable
@@ -354,6 +340,37 @@ fun MoneroWalletTheme(content: @Composable () -> Unit) {
 }
 
 // ============================================================================
+// USD RATE FETCHER
+// ============================================================================
+
+suspend fun fetchXMRUSDRate(): Result<Double> = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
+    try {
+        val url = URL("https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd")
+        connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        connection.setRequestProperty("Accept", "application/json")
+        
+        val responseCode = connection.responseCode
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
+            val json = JSONObject(response)
+            val rate = json.getJSONObject("monero").getDouble("usd")
+            Result.success(rate)
+        } else {
+            Result.failure(Exception("HTTP error: $responseCode"))
+        }
+    } catch (e: Exception) {
+        Timber.e("USDRate", "Failed to fetch XMR/USD rate", e)
+        Result.failure(e)
+    } finally {
+        connection?.disconnect()
+    }
+}
+
+// ============================================================================
 // MAIN WALLET SCREEN
 // ============================================================================
 
@@ -363,6 +380,10 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
     var selectedTab by remember { mutableStateOf(0) }
     var balance by remember { mutableStateOf(0L) }
     var unlockedBalance by remember { mutableStateOf(0L) }
+    var lockedBalance by remember { mutableStateOf(0L) }
+    var usdRate by remember { mutableStateOf<Double?>(null) }
+    var isLoadingRate by remember { mutableStateOf(false) }
+    var rateError by remember { mutableStateOf<String?>(null) }
     var syncProgress by remember { mutableStateOf(0.0) }
     var isSyncing by remember { mutableStateOf(false) }
     var walletAddress by remember { mutableStateOf("") }
@@ -374,7 +395,39 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
     var isInitialized by remember { mutableStateOf(false) }
     var initMessage by remember { mutableStateOf("") }
     
-    // Setup listeners
+    // Fetch USD rate immediately and every minute
+    LaunchedEffect(Unit) {
+        // Fetch immediately on launch
+        isLoadingRate = true
+        fetchXMRUSDRate()
+            .onSuccess { rate ->
+                usdRate = rate
+                rateError = null
+                isLoadingRate = false
+            }
+            .onFailure { error ->
+                rateError = error.message
+                isLoadingRate = false
+            }
+        
+        // Then fetch every 60 seconds
+        while (true) {
+            delay(60000)
+            isLoadingRate = true
+            fetchXMRUSDRate()
+                .onSuccess { rate ->
+                    usdRate = rate
+                    rateError = null
+                    isLoadingRate = false
+                }
+                .onFailure { error ->
+                    rateError = error.message
+                    isLoadingRate = false
+                }
+        }
+    }
+    
+    // Setup wallet listeners
     LaunchedEffect(Unit) {
         walletSuite.setWalletStatusListener(object : WalletSuite.WalletStatusListener {
             override fun onWalletInitialized(success: Boolean, message: String) {
@@ -384,12 +437,14 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
                     walletAddress = walletSuite.cachedAddress ?: ""
                     balance = walletSuite.balanceValue
                     unlockedBalance = walletSuite.unlockedBalanceValue
+                    lockedBalance = balance - unlockedBalance
                 }
             }
             
             override fun onBalanceUpdated(bal: Long, unl: Long) {
                 balance = bal
                 unlockedBalance = unl
+                lockedBalance = bal - unl
             }
             
             override fun onSyncProgress(h: Long, sh: Long, eh: Long, pd: Double) {
@@ -407,6 +462,7 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
             walletAddress = walletSuite.cachedAddress ?: ""
             balance = walletSuite.balanceValue
             unlockedBalance = walletSuite.unlockedBalanceValue
+            lockedBalance = balance - unlockedBalance
         }
     }
     
@@ -456,12 +512,13 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
         Box(modifier = Modifier.padding(padding)) {
             when (selectedTab) {
                 0 -> HomeScreen(
-                    balance, unlockedBalance, walletAddress, syncProgress, isSyncing,
+                    balance, unlockedBalance, lockedBalance, usdRate,
+                    walletAddress, syncProgress, isSyncing,
                     walletHeight, daemonHeight,
                     { walletSuite.triggerImmediateSync() },
                     { showReceiveDialog = true },
                     { selectedTab = 1 },
-                    { selectedTab = 4 } // FIXED: Add exchange callback
+                    { selectedTab = 4 }
                 )
                 1 -> SendScreen(
                     walletSuite, unlockedBalance,
@@ -491,6 +548,9 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
         ReceiveDialog(walletAddress) { showReceiveDialog = false }
     }
 }
+
+// The rest of the file continues with ExportKeysDialog, SecuritySettingsDialog, LoadingScreen, HomeScreen (updated), and all other functions...
+// (Truncated for brevity - the artifact is complete in the actual file)
 
 @Composable
 fun ExportKeysDialog(
@@ -817,6 +877,8 @@ fun LoadingScreen(message: String) {
 fun HomeScreen(
     balance: Long,
     unlockedBalance: Long,
+    lockedBalance: Long,
+    usdRate: Double?,
     walletAddress: String,
     syncProgress: Double,
     isSyncing: Boolean,
@@ -825,7 +887,7 @@ fun HomeScreen(
     onRefresh: () -> Unit,
     onReceiveClick: () -> Unit,
     onSendClick: () -> Unit,
-    onExchangeClick: () -> Unit = {} // NEW PARAMETER
+    onExchangeClick: () -> Unit = {}
 ) {
     val balanceXMR = WalletSuite.convertAtomicToXmr(balance)
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance)
@@ -847,20 +909,20 @@ fun HomeScreen(
         // Balance Card
         item {
             Card(
-                modifier = Modifier.fillMaxWidth().height(220.dp).semantics(mergeDescendants = true) { },
+                modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { },
                 shape = RoundedCornerShape(24.dp),
                 elevation = CardDefaults.cardElevation(8.dp)
             ) {
                 Box(
-                    modifier = Modifier.fillMaxSize().background(
+                    modifier = Modifier.fillMaxWidth().background(
                         Brush.verticalGradient(
                             listOf(Color(0xFFFF6600), Color(0xFFFF8833), Color(0xFFFFAA66))
                         )
                     ).padding(24.dp)
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.SpaceBetween
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -890,18 +952,70 @@ fun HomeScreen(
                             }
                         }
                         
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Total Balance with USD
                             Text(
-                                "$balanceXMR XMR",
+                                String.format("%.12f Ɱ", balanceXMR.toDoubleOrNull() ?: 0.0),
                                 color = Color.White,
                                 fontSize = 36.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            Text(
-                                stringResource(R.string.wallet_unlocked_balance, unlockedXMR),
-                                color = Color.White.copy(0.8f),
-                                fontSize = 14.sp
-                            )
+                            
+                            // USD Value
+                            usdRate?.let { rate ->
+                                val usdValue = (balanceXMR.toDoubleOrNull() ?: 0.0) * rate
+                                Text(
+                                    String.format("≈ $%.2f USD", usdValue),
+                                    color = Color.White.copy(0.9f),
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                        
+                        // Unlocked and Locked Balances Side by Side
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // Unlocked Balance
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    stringResource(R.string.wallet_unlocked),
+                                    color = Color.White.copy(0.7f),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    String.format("%.12f", unlockedXMR.toDoubleOrNull() ?: 0.0),
+                                    color = Color(0xFF1B5E20),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            
+                            // Locked Balance
+                            val lockedXMR = WalletSuite.convertAtomicToXmr(lockedBalance)
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    stringResource(R.string.wallet_locked),
+                                    color = Color.White.copy(0.7f),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    String.format("%.12f", lockedXMR.toDoubleOrNull() ?: 0.0),
+                                    color = Color.White.copy(0.85f),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                         
                         if (isSyncing) {
@@ -940,7 +1054,7 @@ fun HomeScreen(
                 )
                 QuickActionButton(
                     Icons.Default.SwapHoriz, stringResource(R.string.action_exchange),
-                    Modifier.weight(1f), onExchangeClick, Color(0xFF9C27B0) // FIXED
+                    Modifier.weight(1f), onExchangeClick, Color(0xFF9C27B0)
                 )
             }
         }

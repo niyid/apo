@@ -1,30 +1,21 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    
     <string name="app_name">Àpò</string>
-    
-    
     <string name="nav_wallet">Wallet</string>
     <string name="nav_send">Send</string>
     <string name="nav_receive">Receive</string>
     <string name="nav_history">History</string>
     <string name="nav_settings">Settings</string>
-    
-    
     <string name="wallet_total_balance">Total Balance</string>
     <string name="wallet_unlocked_balance">Unlocked: %s XMR</string>
     <string name="wallet_syncing">Syncing: %1$.1f%% (%2$d / %3$d)</string>
     <string name="wallet_your_address">Your Address</string>
     <string name="wallet_height">Height</string>
     <string name="wallet_network">Network</string>
-    
-    
     <string name="action_receive">Receive</string>
     <string name="action_send">Send</string>
     <string name="action_exchange">Exchange</string>
     <string name="action_refresh">Refresh</string>
-    
-    
     <string name="send_title">Send Monero</string>
     <string name="send_available_balance">Available Balance</string>
     <string name="send_recipient_address">Recipient Address</string>
@@ -37,8 +28,6 @@
     <string name="send_confirm_to">To:</string>
     <string name="send_confirm_warning">This transaction cannot be reversed. Please verify the details carefully.</string>
     <string name="send_confirm_button">Confirm &amp; Send</string>
-    
-    
     <string name="receive_title">Receive Monero</string>
     <string name="receive_your_address">Your Monero Address</string>
     <string name="receive_qr_code">QR Code</string>
@@ -46,76 +35,53 @@
     <string name="receive_copy_address">Copy Address</string>
     <string name="receive_address_copied">Copied!</string>
     <string name="receive_share_info">Share this address to receive Monero payments</string>
-    
-    
     <string name="history_title">Transaction History</string>
     <string name="history_no_transactions">No transactions yet</string>
     <string name="history_received">Received</string>
     <string name="history_sent">Sent</string>
     <string name="history_confirmed">Confirmed</string>
     <string name="history_pending">Pending</string>
-    
-    
     <string name="settings_title">Settings</string>
     <string name="settings_wallet_info">Wallet Information</string>
     <string name="settings_status">Status</string>
     <string name="settings_syncing">Syncing</string>
     <string name="settings_ready">Ready</string>
     <string name="settings_not_ready">Not Ready</string>
-    
-    
     <string name="settings_maintenance">Maintenance</string>
-    
     <string name="settings_rescan_subtitle">Fix missing transactions</string>
     <string name="settings_rescan_progress">Scanning... %.1f%%</string>
     <string name="settings_force_refresh">Force Balance Refresh</string>
     <string name="settings_force_refresh_subtitle">Recalculate wallet balance</string>
-    
-    
     <string name="settings_backup_security">Backup &amp; Security</string>
     <string name="settings_view_seed">View Seed Phrase</string>
     <string name="settings_view_seed_subtitle">Backup your wallet recovery phrase</string>
     <string name="settings_export_keys">Export Keys</string>
     <string name="settings_export_keys_subtitle">Export private keys</string>
-    
-    
     <string name="settings_network">Network</string>
     <string name="settings_node_settings">Node Settings</string>
     <string name="settings_current_node">Current: %1$s:%2$d</string>
     <string name="settings_reload_config">Reload Configuration</string>
     <string name="settings_reload_config_subtitle">Refresh wallet configuration</string>
-    
-    
     <string name="settings_advanced">Advanced</string>
     <string name="settings_tx_search">Transaction Search</string>
     <string name="settings_tx_search_subtitle">Search for missing transaction by ID</string>
     <string name="settings_security">Security</string>
     <string name="settings_security_subtitle">Password &amp; privacy settings</string>
-    
-    
     <string name="dialog_close">Close</string>
     <string name="dialog_cancel">Cancel</string>
     <string name="dialog_confirm">Confirm</string>
     <string name="dialog_yes">Yes</string>
     <string name="dialog_no">No</string>
-    
-    
     <string name="rescan_title">Rescan Blockchain</string>
     <string name="rescan_message">This will rescan the blockchain to find missing transactions. This may take several minutes. Continue?</string>
     <string name="rescan_start">Start Rescan</string>
-    
-    
     <string name="seed_title">Seed Phrase</string>
     <string name="seed_warning">⚠️ Never share your seed phrase with anyone!</string>
     <string name="seed_info">Your seed phrase is the master key to your wallet. Store it securely offline.</string>
     <string name="seed_placeholder">[Seed phrase would be displayed here - implement wallet.getSeed() method]</string>
-    
-    
     <string name="node_title">Node Configuration</string>
     <string name="node_current_daemon">Current daemon:</string>
     <string name="node_change_info">To change the node, update wallet.properties file.</string>
-    
-    
     <string name="tx_search_title">Search Transaction</string>
     <string name="tx_search_info">Enter transaction ID to search for missing transactions</string>
     <string name="tx_search_id">Transaction ID</string>
@@ -123,37 +89,22 @@
     <string name="tx_search_found">Transaction found!\nAmount: %1$s XMR\nConfirmations: %2$d</string>
     <string name="tx_search_not_found">Transaction not found in wallet history</string>
     <string name="tx_search_error">Error: %s</string>
-    
-    
     <string name="init_wallet">Initializing wallet...</string>
     <string name="init_wait">This may take a moment...</string>
-    
-    
     <string name="error_wallet_not_ready">Wallet not initialized</string>
     <string name="error_invalid_amount">Invalid amount</string>
     <string name="error_insufficient_balance">Insufficient balance. Required: %1$s XMR, Available: %2$s XMR</string>
     <string name="error_wallet_busy">Wallet busy: %s</string>
     <string name="error_transaction_failed">Transaction failed: %s</string>
-    
-    
     <string name="success_transaction_sent">Transaction sent!\nTxID: %s</string>
-    
-    
     <string name="qr_add_library">Add QRCodeGenerator library</string>
-    
-
-    <!-- Additional Resources -->
     <string name="action_search_transaction">Search Transaction</string>
     <string name="action_search">Search</string>
     <string name="qr_code_placeholder">QR CODE</string>
-
-    <!-- Additional Missing Resources -->
     <string name="action_copy">Copy</string>
     <string name="common_yes">Yes</string>
     <string name="common_no">No</string>
     <string name="status_copied">Copied!</string>
-    
-    <!-- Missing from original app -->
     <string name="accounts_drawer_new">New Account</string>
     <string name="accounts_new">Accounts</string>
     <string name="accounts_progress_new">Creating account...</string>
@@ -496,38 +447,23 @@
     <string name="tx_transfers">Transfers</string>
     <string name="wallet_activity_name">Wallet</string>
     <string name="xmr_unconfirmed_amount">+ %s XMR unconfirmed</string>
-
-    <!-- Arrays -->
     <string-array name="daynight_themes">
         <item>Auto</item>
         <item>Day</item>
         <item>Night</item>
     </string-array>
-
     <string-array name="themes">
         <item>Classic</item>
         <item>Oled</item>
         <item>BrightBlue</item>
     </string-array>
-
-    <!-- Splash Screen Resources -->
     <string name="settings_rescan_blockchain">Rescan Blockchain</string>
-
-
-    <!-- Pocket Change -->
     <string name="pocketchange_title">Pocket Change</string>
     <string name="pocketchange_amount">Amount</string>
-    
-    <!-- Transition Names -->
     <string name="subaddress_info_transition_name" translatable="false">subaddress_info_transition</string>
     <string name="tx_details_transition_name" translatable="false">tx_details_transition</string>
     <string name="subaddress_txinfo_transition_name" translatable="false">subaddress_txinfo_transition</string>
-    
-    <!-- Node Settings -->
     <string name="node_use_ssl">Use SSL</string>
-
-
-    <!-- Preference Keys (used as identifiers) -->
     <string name="preferred_locale" translatable="false">preferred_locale</string>
     <string name="preferred_nightmode" translatable="false">preferred_nightmode</string>
     <string name="preferred_theme" translatable="false">preferred_theme</string>
@@ -536,21 +472,16 @@
     <string name="credits_info" translatable="false">credits_info</string>
     <string name="privacy_info" translatable="false">privacy_info</string>
     <string name="about_info" translatable="false">about_info</string>
-
-    <!-- Array Values for Preferences -->
     <string-array name="daynight_values" translatable="false">
         <item>AUTO</item>
         <item>DAY</item>
         <item>NIGHT</item>
     </string-array>
-
     <string-array name="themes_values" translatable="false">
         <item>Classic</item>
         <item>Oled</item>
         <item>BrightBlue</item>
     </string-array>
-
-    <!-- Exchange Screen Strings -->
     <string name="exchange_title">Exchange</string>
     <string name="exchange_available_xmr">Available XMR</string>
     <string name="exchange_from">From</string>
@@ -566,11 +497,7 @@
     <string name="exchange_estimated_amount">≈ %.6f</string>
     <string name="exchange_placeholder">0.0</string>
     <string name="exchange_max_button">MAX</string>
-    
-    <!-- Navigation - Exchange Tab -->
     <string name="nav_exchange">Exchange</string>
-    
-    <!-- Import/Export Features -->
     <string name="import_export_title">Import/Export</string>
     <string name="export_keys_dialog_title">Export Private Keys</string>
     <string name="export_keys_warning">⚠️ Warning: Never share your private keys!</string>
@@ -579,15 +506,11 @@
     <string name="export_keys_spend_key_label">Spend Key:</string>
     <string name="export_keys_save_button">Save to File</string>
     <string name="export_keys_placeholder">[Implement WalletSuite.getViewKey() and getSpendKey()]</string>
-    
-    <!-- QR Scanner -->
     <string name="qr_scanner_title">Scan QR Code</string>
     <string name="qr_scanner_permission_required">Camera permission required</string>
     <string name="qr_scanner_error">QR scanning error: %s</string>
     <string name="qr_scanner_invalid_address">Invalid Monero address in QR code</string>
     <string name="qr_scanner_success">Address scanned successfully</string>
-    
-    <!-- Security Settings -->
     <string name="security_title">Security Settings</string>
     <string name="security_biometric_title">Biometric Authentication</string>
     <string name="security_biometric_subtitle">Use fingerprint/face to unlock wallet</string>
@@ -598,58 +521,45 @@
     <string name="security_biometric_enable">Enable Biometric</string>
     <string name="security_biometric_disable">Disable Biometric</string>
     <string name="security_authenticate_prompt">Authenticate to enable biometric</string>
-    
-    <!-- Reload Configuration Strings -->
     <string name="reload_config_initiated">Configuration reload initiated. Daemon: %1$s:%2$d</string>
-    <string name="reload_config_failed">Failed to reload: %1$s</string>    
-
+    <string name="reload_config_failed">Failed to reload: %1$s</string>
     <string name="permission_storage_required_title">Storage Permission Required</string>
     <string name="permission_storage_required_message">This app needs storage permission to save your Monero wallet securely. Without this permission, the wallet cannot function properly.</string>
     <string name="permission_grant">Grant Permission</string>
     <string name="exit">Exit</string>
-    
-    <!-- Currency Names -->
     <string name="currency_xmr">Monero (XMR)</string>
     <string name="currency_btc">Bitcoin (BTC)</string>
     <string name="currency_eth">Ethereum (ETH)</string>
     <string name="currency_ltc">Litecoin (LTC)</string>
     <string name="currency_usdt">Tether (USDT)</string>
-    
-    <!-- Error Messages for Exchange -->
     <string name="error_exchange_no_estimate">Cannot get exchange estimate</string>
     <string name="error_exchange_create_failed">Failed to create exchange</string>
     <string name="error_exchange_invalid_amount">Invalid exchange amount</string>
     <string name="error_exchange_api_key">API key not configured</string>
     <string name="error_exchange_network">Network error. Check your connection.</string>
-    
-    <!-- ChangeNOW Integration -->
     <string name="changenow_powered_by">Powered by ChangeNOW</string>
     <string name="changenow_rate_label">Exchange Rate:</string>
     <string name="changenow_min_amount">Minimum: %1$s %2$s</string>
     <string name="changenow_max_amount">Maximum: %1$s %2$s</string>
     <string name="changenow_processing_time">Est. Processing Time: %s</string>
     <string name="changenow_order_id">Order ID: %s</string>
-    
-    <!-- Loading States -->
     <string name="loading_exchange_rate">Loading exchange rate...</string>
     <string name="loading_currencies">Loading currencies...</string>
     <string name="loading_creating_exchange">Creating exchange...</string>
-    
-    <!-- Validation Messages -->
     <string name="validation_address_required">Address is required</string>
     <string name="validation_amount_required">Amount is required</string>
     <string name="validation_amount_positive">Amount must be positive</string>
     <string name="validation_insufficient_balance">Insufficient balance</string>
-    
-    <!-- Success Messages -->
     <string name="success_keys_exported">Keys exported successfully</string>
     <string name="success_keys_copied">Keys copied to clipboard</string>
     <string name="success_qr_scanned">QR code scanned</string>
-    
-    <!-- File Operations -->
     <string name="file_save_keys_title">Save Private Keys</string>
     <string name="file_save_keys_name">monero_keys_%s.txt</string>
     <string name="file_saved_success">File saved: %s</string>
     <string name="file_save_error">Error saving file: %s</string>
-
+    <string name="wallet_unlocked">Unlocked</string>
+    <string name="wallet_locked">Locked</string>
+    <string name="wallet_usd_rate">XMR/USD Rate</string>
+    <string name="rate_loading">Loading rate…</string>
+    <string name="rate_unavailable">Rate unavailable</string>
 </resources>
