@@ -149,7 +149,7 @@
         This was the block your transaction was included in.
     ]]></string>
 
-    <string name="help_send"><![CDATA[
+    <string name="help_send_to"><![CDATA[
         <h1>Send</h1>
         <h2>Receiver\'s address</h2>
         <p>This is the public address of the wallet you are sending to, you can paste it from

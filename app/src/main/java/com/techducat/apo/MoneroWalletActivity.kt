@@ -8,6 +8,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -54,13 +56,29 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.m2049r.xmrwallet.model.TransactionInfo
+import android.content.Context
+import android.net.Uri
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.foundation.Image
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.window.DialogProperties
+
+// ============================================================================
+// QR CODE GENERATOR
+// ============================================================================
 
 fun generateQRCode(content: String, size: Int = 512): Bitmap? {
     return try {
         val hints = hashMapOf<EncodeHintType, Any>()
         hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.M
         hints[EncodeHintType.MARGIN] = 1
-
         val writer = QRCodeWriter()
         val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size, hints)
         
@@ -76,11 +94,10 @@ fun generateQRCode(content: String, size: Int = 512): Bitmap? {
         
         bitmap
     } catch (e: Exception) {
-        Timber.e("QRCode", "Failed to generate QR code", e)
+        Timber.e(e, "QR Code generation failed")
         null
     }
 }
-
 
 // ============================================================================
 // CHANGENOW SWAP SERVICE
@@ -89,20 +106,15 @@ fun generateQRCode(content: String, size: Int = 512): Bitmap? {
 class ChangeNowSwapService {
     companion object {
         private const val BASE_URL = "https://api.changenow.io/v2"
-        private const val CONNECTION_TIMEOUT = 10000 // 10 seconds
-        private const val READ_TIMEOUT = 15000 // 15 seconds
+        private const val CONNECTION_TIMEOUT = 10000
+        private const val READ_TIMEOUT = 15000
         
         private val API_KEY: String by lazy {
             try {
                 BuildConfig.CHANGENOW_API_KEY.takeIf { it.isNotBlank() }
-                    ?: throw IllegalStateException(
-                        "ChangeNOW API key not configured."
-                    )
+                    ?: throw IllegalStateException("ChangeNow API key not configured")
             } catch (e: Exception) {
-                throw IllegalStateException(
-                    "ChangeNOW API key not configured.",
-                    e
-                )
+                throw IllegalStateException("ChangeNow API key not configured", e)
             }
         }
         
@@ -218,7 +230,7 @@ class ChangeNowSwapService {
                     )
                 )
             } else {
-                Result.failure(Exception("HTTP error: $responseCode"))
+                Result.failure(Exception("Failed to create exchange: $responseCode"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -229,19 +241,401 @@ class ChangeNowSwapService {
 }
 
 // ============================================================================
+// DATA MODELS
+// ============================================================================
+
+data class AddressBookEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val address: String,
+    val notes: String = "",
+    val dateAdded: Long = System.currentTimeMillis(),
+    val isFavorite: Boolean = false
+)
+
+data class TransactionNote(
+    val txId: String,
+    val note: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class Subaddress(
+    val index: Int,
+    val address: String,
+    val label: String,
+    val used: Boolean = false,
+    val creationTime: Long = System.currentTimeMillis()
+)
+
+data class FiatCurrency(
+    val code: String,
+    val symbol: String,
+    val name: String
+)
+
+enum class TransactionPriority(val value: Int, val displayName: String, val feeMultiplier: Double) {
+    LOW(1, "Slow & Cheaper", 0.5),
+    MEDIUM(2, "Normal", 1.0),
+    HIGH(3, "Fast & Standard", 1.5),
+    URGENT(4, "Urgent & Fastest", 2.0);
+
+    companion object {
+        fun fromName(name: String?): TransactionPriority {
+            return when (name) {
+                "LOW" -> LOW
+                "HIGH" -> HIGH
+                "URGENT" -> URGENT
+                else -> MEDIUM
+            }
+        }
+    }
+}
+
+data class PaymentRequest(
+    val address: String,
+    val amount: String? = null,
+    val recipientName: String? = null,
+    val txDescription: String? = null,
+    val uri: String = ""
+)
+
+data class RecipientInput(
+    val id: String = UUID.randomUUID().toString(),
+    val address: String,
+    val amount: String
+)
+
+enum class TransactionFilter {
+    ALL, SENT, RECEIVED, PENDING, CONFIRMED, LARGE, SMALL
+}
+
+data class TransactionFilterState(
+    val filter: TransactionFilter = TransactionFilter.ALL,
+    val dateFrom: Long? = null,
+    val dateTo: Long? = null,
+    val minAmount: String = "",
+    val maxAmount: String = "",
+    val searchQuery: String = ""
+)
+
+// ============================================================================
+// WALLET DATA STORE
+// ============================================================================
+
+class WalletDataStore(private val context: Context) {
+    private val prefs = context.getSharedPreferences("wallet_data", Context.MODE_PRIVATE)
+    private val gson = Gson()
+    
+    companion object {
+        private const val KEY_ADDRESS_BOOK = "address_book"
+        private const val KEY_TRANSACTION_NOTES = "tx_notes"
+        private const val KEY_SUBADDRESSES = "subaddresses"
+        private const val KEY_PREFERRED_CURRENCY = "preferred_currency"
+        private const val KEY_DEFAULT_PRIORITY = "default_priority"
+        private const val KEY_AUTO_BACKUP = "auto_backup"
+        private const val KEY_WATCH_ONLY = "watch_only"
+    }
+    
+    fun saveAddressBook(entries: List<AddressBookEntry>) {
+        prefs.edit().putString(KEY_ADDRESS_BOOK, gson.toJson(entries)).apply()
+    }
+    
+    fun loadAddressBook(): List<AddressBookEntry> {
+        val json = prefs.getString(KEY_ADDRESS_BOOK, "[]") ?: "[]"
+        val type = object : TypeToken<List<AddressBookEntry>>() {}.type
+        return gson.fromJson(json, type) ?: emptyList()
+    }
+    
+    fun saveTransactionNotes(notes: Map<String, TransactionNote>) {
+        prefs.edit().putString(KEY_TRANSACTION_NOTES, gson.toJson(notes)).apply()
+    }
+    
+    fun loadTransactionNotes(): Map<String, TransactionNote> {
+        val json = prefs.getString(KEY_TRANSACTION_NOTES, "{}") ?: "{}"
+        val type = object : TypeToken<Map<String, TransactionNote>>() {}.type
+        return gson.fromJson(json, type) ?: emptyMap()
+    }
+    
+    fun addTransactionNote(txId: String, note: String) {
+        val notes = loadTransactionNotes().toMutableMap()
+        notes[txId] = TransactionNote(txId, note)
+        saveTransactionNotes(notes)
+    }
+    
+    fun saveSubaddresses(subaddresses: List<Subaddress>) {
+        prefs.edit().putString(KEY_SUBADDRESSES, gson.toJson(subaddresses)).apply()
+    }
+    
+    fun loadSubaddresses(): List<Subaddress> {
+        val json = prefs.getString(KEY_SUBADDRESSES, "[]") ?: "[]"
+        val type = object : TypeToken<List<Subaddress>>() {}.type
+        return gson.fromJson(json, type) ?: emptyList()
+    }
+    
+    fun addSubaddress(subaddress: Subaddress) {
+        val subaddresses = loadSubaddresses().toMutableList()
+        subaddresses.add(subaddress)
+        saveSubaddresses(subaddresses)
+    }
+    
+    fun savePreferredCurrency(currency: FiatCurrency) {
+        prefs.edit().putString(KEY_PREFERRED_CURRENCY, gson.toJson(currency)).apply()
+    }
+    
+    fun loadPreferredCurrency(): FiatCurrency {
+        val json = prefs.getString(KEY_PREFERRED_CURRENCY, null)
+        return if (json != null) {
+            gson.fromJson(json, FiatCurrency::class.java)
+        } else {
+            FiatCurrency("USD", "$", "US Dollar")
+        }
+    }
+    
+    fun getAvailableCurrencies(): List<FiatCurrency> {
+        return listOf(
+            FiatCurrency("USD", "$", "US Dollar"),
+            FiatCurrency("EUR", "€", "Euro"),
+            FiatCurrency("GBP", "£", "British Pound"),
+            FiatCurrency("JPY", "¥", "Japanese Yen"),
+            FiatCurrency("CAD", "$", "Canadian Dollar"),
+            FiatCurrency("AUD", "$", "Australian Dollar"),
+            FiatCurrency("CNY", "¥", "Chinese Yuan"),
+            FiatCurrency("INR", "₹", "Indian Rupee")
+        )
+    }
+    
+    fun saveDefaultPriority(priority: TransactionPriority) {
+        prefs.edit().putString(KEY_DEFAULT_PRIORITY, priority.name).apply()
+    }
+    
+    fun loadDefaultPriority(): TransactionPriority {
+        val name = prefs.getString(KEY_DEFAULT_PRIORITY, null)
+        return if (name != null) {
+            try {
+                TransactionPriority.valueOf(name)
+            } catch (e: Exception) {
+                TransactionPriority.MEDIUM
+            }
+        } else {
+            TransactionPriority.MEDIUM
+        }
+    }
+    
+    fun saveAutoBackup(enabled: Boolean, intervalHours: Int) {
+        prefs.edit().apply {
+            putBoolean("auto_backup_enabled", enabled)
+            putInt("auto_backup_interval", intervalHours)
+            apply()
+        }
+    }
+    
+    fun loadAutoBackup(): Pair<Boolean, Int> {
+        val enabled = prefs.getBoolean("auto_backup_enabled", false)
+        val interval = prefs.getInt("auto_backup_interval", 24)
+        return Pair(enabled, interval)
+    }
+
+    fun saveWatchOnlyMode(enabled: Boolean) {
+        prefs.edit().putBoolean("watch_only_mode", enabled).apply()
+    }
+    
+    fun loadWatchOnlyMode(): Boolean {
+        return prefs.getBoolean("watch_only_mode", false)
+    }
+    
+    fun clearAllData() {
+        prefs.edit().clear().apply()
+    }
+}
+
+// ============================================================================
+// URI HANDLER
+// ============================================================================
+
+object MoneroUriHandler {
+    fun parseUri(uri: String): PaymentRequest? {
+        return try {
+            if (!uri.startsWith("monero:")) return null
+            
+            val cleanUri = if (uri.startsWith("monero://")) {
+                uri.replaceFirst("monero://", "monero:")
+            } else {
+                uri
+            }
+            
+            val parsed = Uri.parse(cleanUri)
+            val address = parsed.schemeSpecificPart?.split("?")?.get(0) ?: return null
+            
+            val amount = parsed.getQueryParameter("tx_amount")
+            val recipientName = parsed.getQueryParameter("recipient_name")
+            val description = parsed.getQueryParameter("tx_description")
+            
+            PaymentRequest(
+                address = address,
+                amount = amount,
+                recipientName = recipientName,
+                txDescription = description,
+                uri = cleanUri
+            )
+        } catch (e: Exception) {
+            Timber.e("URIParser", e)
+            null
+        }
+    }
+    
+    fun createUri(request: PaymentRequest): String {
+        var uri = "monero:${request.address}"
+        val params = mutableListOf<String>()
+        
+        request.amount?.let { params.add("tx_amount=$it") }
+        request.recipientName?.let { params.add("recipient_name=${Uri.encode(it)}") }
+        request.txDescription?.let { params.add("tx_description=${Uri.encode(it)}") }
+        
+        if (params.isNotEmpty()) {
+            uri += "?" + params.joinToString("&")
+        }
+        
+        return uri
+    }
+    
+    fun isMoneroAddress(address: String): Boolean {
+        return address.startsWith("4") || address.startsWith("8") && address.length >= 95 && address.length <= 106
+    }
+}
+
+// ============================================================================
+// TRANSACTION FILTERS & UTILITIES
+// ============================================================================
+
+class TransactionFilterManager(private val dataStore: WalletDataStore) {
+    fun filterTransactions(
+        transactions: List<Transaction>,
+        filterState: TransactionFilterState
+    ): List<Transaction> {
+        return transactions.filter { tx ->
+            val typeMatch = when (filterState.filter) {
+                TransactionFilter.ALL -> true
+                TransactionFilter.SENT -> tx.type == "Sent"
+                TransactionFilter.RECEIVED -> tx.type == "Received"
+                TransactionFilter.PENDING -> !tx.confirmed
+                TransactionFilter.CONFIRMED -> tx.confirmed
+                TransactionFilter.LARGE -> {
+                    val amount = tx.amount.replace("μ", "").trim().toDoubleOrNull() ?: 0.0
+                    amount > 1.0
+                }
+                TransactionFilter.SMALL -> {
+                    val amount = tx.amount.replace("μ", "").trim().toDoubleOrNull() ?: 0.0
+                    amount <= 0.1
+                }
+            }
+            
+            val dateMatch = try {
+                val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
+                val txDate = dateFormat.parse(tx.date)?.time ?: 0L
+                (filterState.dateFrom == null || txDate >= filterState.dateFrom) &&
+                (filterState.dateTo == null || txDate <= filterState.dateTo)
+            } catch (e: Exception) {
+                true
+            }
+            
+            val amountMatch = try {
+                val txAmount = tx.amount.replace("μ", "").trim().toDoubleOrNull() ?: 0.0
+                val minAmount = filterState.minAmount.toDoubleOrNull() ?: Double.MIN_VALUE
+                val maxAmount = filterState.maxAmount.toDoubleOrNull() ?: Double.MAX_VALUE
+                txAmount in minAmount..maxAmount
+            } catch (e: Exception) {
+                true
+            }
+            
+            val searchMatch = filterState.searchQuery.isEmpty() ||
+                    tx.type.contains(filterState.searchQuery, ignoreCase = true) ||
+                    tx.amount.contains(filterState.searchQuery, ignoreCase = true) ||
+                    tx.date.contains(filterState.searchQuery, ignoreCase = true) ||
+                    tx.txId.contains(filterState.searchQuery, ignoreCase = true)
+            
+            typeMatch && dateMatch && amountMatch && searchMatch
+        }
+    }
+    
+    fun sortTransactions(
+        transactions: List<Transaction>,
+        sortBy: String = "date",
+        ascending: Boolean = false
+    ): List<Transaction> {
+        return when (sortBy) {
+            "amount" -> transactions.sortedBy {
+                it.amount.replace("μ", "").trim().toDoubleOrNull() ?: 0.0
+            }
+            "date" -> transactions.sortedBy {
+                try {
+                    SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()).parse(it.date)?.time ?: 0L
+                } catch (e: Exception) {
+                    0L
+                }
+            }
+            else -> transactions
+        }.let { if (!ascending) it.reversed() else it }
+    }
+}
+
+// ============================================================================
+// EXPORT MANAGER
+// ============================================================================
+
+object ExportManager {
+    fun exportToCsv(transactions: List<Transaction>, notes: Map<String, TransactionNote>): String {
+        val csv = StringBuilder()
+        csv.append("Type,Amount,Date,Confirmed,TxID,Note\n")
+        
+        transactions.forEach { tx ->
+            val note = notes[tx.txId]?.note ?: ""
+            csv.append("\"${tx.type}\",")
+            csv.append("\"${tx.amount}\",")
+            csv.append("\"${tx.date}\",")
+            csv.append("\"${tx.confirmed}\",")
+            csv.append("\"${tx.txId}\",")
+            csv.append("\"${note.replace("\"", "\"\"")}\"\n")
+        }
+        
+        return csv.toString()
+    }
+    
+    fun exportToJson(transactions: List<Transaction>, notes: Map<String, TransactionNote>): String {
+        val data = mapOf(
+            "export_date" to SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
+            "transactions" to transactions.map { tx ->
+                mapOf(
+                    "type" to tx.type,
+                    "amount" to tx.amount,
+                    "date" to tx.date,
+                    "confirmed" to tx.confirmed,
+                    "tx_id" to tx.txId,
+                    "note" to (notes[tx.txId]?.note ?: "")
+                )
+            }
+        )
+        
+        return Gson().toJson(data)
+    }
+}
+
+// ============================================================================
 // MAIN ACTIVITY
 // ============================================================================
 
 class MoneroWalletActivity : ComponentActivity() {
     private lateinit var walletSuite: WalletSuite
+    private lateinit var dataStore: WalletDataStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         
         super.onCreate(savedInstanceState)
         
+        dataStore = WalletDataStore(this)
+        
         if (!PermissionHandler.hasStoragePermissions(this)) {
-            Timber.w("MoneroWallet", "Storage permissions not granted, requesting...")
+            Timber.w("MoneroWallet", "Storage permission not granted - requesting")
             PermissionHandler.requestStoragePermissions(this)
         }
         
@@ -258,7 +652,7 @@ class MoneroWalletActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MoneroWalletScreen(walletSuite)
+                    MoneroWalletScreen(walletSuite, dataStore)
                 }
             }
         }
@@ -295,28 +689,28 @@ class MoneroWalletActivity : ComponentActivity() {
             permissions,
             grantResults,
             onGranted = {
-                Timber.i("MoneroWallet", "Storage permissions granted - wallet can proceed")
+                Timber.i("MoneroWallet", "Storage permission granted")
             },
             onDenied = {
-                Timber.w("MoneroWallet", "Storage permissions denied - showing rationale")
-                showPermissionDeniedDialog()
+                Timber.w("MoneroWallet", "Storage permission denied")
+                showPermissionDeniedDialogTraditional()
             }
         )
     }
 
-    private fun showPermissionDeniedDialog() {
+    private fun showPermissionDeniedDialogTraditional() {
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(R.string.permission_storage_required_title)
-            .setMessage(R.string.permission_storage_required_message)
-            .setPositiveButton(R.string.permission_grant) { _, _ ->
+            .setTitle("Storage Permission Required")
+            .setMessage("Storage permission is required to save wallet data, create backups, and export transaction history.")
+            .setPositiveButton("Grant Permission") { _, _ ->
                 PermissionHandler.requestStoragePermissions(this)
             }
-            .setNegativeButton(R.string.exit) { _, _ ->
+            .setNegativeButton("Exit") { _, _ ->
                 finish()
             }
             .setCancelable(false)
             .show()
-    }    
+    } 
 }
 
 @Composable
@@ -360,10 +754,10 @@ suspend fun fetchXMRUSDRate(): Result<Double> = withContext(Dispatchers.IO) {
             val rate = json.getJSONObject("monero").getDouble("usd")
             Result.success(rate)
         } else {
-            Result.failure(Exception("HTTP error: $responseCode"))
+            Result.failure(Exception("Failed to fetch USD rate"))
         }
     } catch (e: Exception) {
-        Timber.e("USDRate", "Failed to fetch XMR/USD rate", e)
+        Timber.e("USDRate", "Error fetching USD rate", e)
         Result.failure(e)
     } finally {
         connection?.disconnect()
@@ -376,7 +770,8 @@ suspend fun fetchXMRUSDRate(): Result<Double> = withContext(Dispatchers.IO) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MoneroWalletScreen(walletSuite: WalletSuite) {
+fun MoneroWalletScreen(walletSuite: WalletSuite, dataStore: WalletDataStore) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(0) }
     var balance by remember { mutableStateOf(0L) }
     var unlockedBalance by remember { mutableStateOf(0L) }
@@ -394,10 +789,12 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
     var sendError by remember { mutableStateOf<String?>(null) }
     var isInitialized by remember { mutableStateOf(false) }
     var initMessage by remember { mutableStateOf("") }
+    var initError by remember { mutableStateOf<String?>(null) }
     
-    // Fetch USD rate immediately and every minute
+    // Add a state to trigger retry
+    var retryTrigger by remember { mutableStateOf(0) }
+    
     LaunchedEffect(Unit) {
-        // Fetch immediately on launch
         isLoadingRate = true
         fetchXMRUSDRate()
             .onSuccess { rate ->
@@ -410,7 +807,6 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
                 isLoadingRate = false
             }
         
-        // Then fetch every 60 seconds
         while (true) {
             delay(60000)
             isLoadingRate = true
@@ -427,7 +823,6 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
         }
     }
     
-    // Setup wallet listeners
     LaunchedEffect(Unit) {
         walletSuite.setWalletStatusListener(object : WalletSuite.WalletStatusListener {
             override fun onWalletInitialized(success: Boolean, message: String) {
@@ -438,6 +833,8 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
                     balance = walletSuite.balanceValue
                     unlockedBalance = walletSuite.unlockedBalanceValue
                     lockedBalance = balance - unlockedBalance
+                } else {
+                    initError = message
                 }
             }
             
@@ -455,15 +852,45 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
             }
         })
         
-        if (!walletSuite.isReady) {
-            walletSuite.initializeWallet()
-        } else {
-            isInitialized = true
-            walletAddress = walletSuite.cachedAddress ?: ""
-            balance = walletSuite.balanceValue
-            unlockedBalance = walletSuite.unlockedBalanceValue
-            lockedBalance = balance - unlockedBalance
+        try {
+            if (!walletSuite.isReady) {
+                walletSuite.initializeWallet()
+            } else {
+                isInitialized = true
+                walletAddress = walletSuite.cachedAddress ?: ""
+                balance = walletSuite.balanceValue
+                unlockedBalance = walletSuite.unlockedBalanceValue
+                lockedBalance = balance - unlockedBalance
+            }
+        } catch (e: Exception) {
+            initError = e.message ?: context.getString(R.string.failed_to_initialize_wallet)
+            isInitialized = false
         }
+    }
+    
+    // Separate LaunchedEffect for retrying initialization
+    LaunchedEffect(retryTrigger) {
+        if (retryTrigger > 0) {
+            try {
+                initError = null
+                isInitialized = false
+                initMessage = context.getString(R.string.retrying_initialization)
+                walletSuite.initializeWallet()
+            } catch (e: Exception) {
+                initError = e.message ?: context.getString(R.string.failed_to_initialize_wallet)
+            }
+        }
+    }
+    
+    if (initError != null) {
+        ErrorScreen(
+            message = initError ?: context.getString(R.string.unknown_error),
+            onRetry = {
+                // Increment retryTrigger to trigger the LaunchedEffect above
+                retryTrigger++
+            }
+        )
+        return
     }
     
     if (!isInitialized) {
@@ -474,39 +901,10 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.AccountBalanceWallet, stringResource(R.string.nav_wallet)) },
-                    label = { Text(stringResource(R.string.nav_wallet)) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Send, stringResource(R.string.nav_send)) },
-                    label = { Text(stringResource(R.string.nav_send)) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.History, stringResource(R.string.nav_history)) },
-                    label = { Text(stringResource(R.string.nav_history)) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.Settings, stringResource(R.string.nav_settings)) },
-                    label = { Text(stringResource(R.string.nav_settings)) }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 4,
-                    onClick = { selectedTab = 4 },
-                    icon = { Icon(Icons.Default.SwapHoriz, stringResource(R.string.nav_exchange)) },
-                    label = { Text(stringResource(R.string.nav_exchange)) },
-                    enabled = ChangeNowSwapService.isConfigured()
-                )
-            }
+            TwoRowNavigationBar(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it }
+            )
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
@@ -540,6 +938,33 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
                 2 -> HistoryScreen(walletSuite)
                 3 -> SettingsScreen(walletSuite, walletAddress)
                 4 -> ExchangeScreen(walletSuite, walletAddress, unlockedBalance)
+                5 -> AddressBookScreen(
+                    dataStore,
+                    onSelectAddress = { selectedAddress ->
+                        // Store selected address for enhanced send
+                        selectedTab = 8
+                    },
+                    onClose = { selectedTab = 0 }
+                )
+                6 -> SubaddressScreen(
+                    walletSuite = walletSuite,
+                    dataStore = dataStore,
+                    onBack = { selectedTab = 0 }
+                )
+                7 -> PaymentRequestScreen(
+                    walletAddress = walletAddress,
+                    onBack = { selectedTab = 0 }
+                )
+                8 -> EnhancedSendScreen(
+                    walletSuite = walletSuite,
+                    dataStore = dataStore,
+                    unlockedBalance = unlockedBalance,
+                    onBack = { selectedTab = 1 },
+                    onSendComplete = { message ->
+                        sendSuccess = message
+                        selectedTab = 0
+                    }
+                )
             }
         }
     }
@@ -549,8 +974,154 @@ fun MoneroWalletScreen(walletSuite: WalletSuite) {
     }
 }
 
-// The rest of the file continues with ExportKeysDialog, SecuritySettingsDialog, LoadingScreen, HomeScreen (updated), and all other functions...
-// (Truncated for brevity - the artifact is complete in the actual file)
+// ============================================================================
+// CUSTOM TWO-ROW NAVIGATION BAR
+// ============================================================================
+
+@Composable
+fun TwoRowNavigationBar(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit
+) {
+    Surface(
+        tonalElevation = 8.dp,
+        shadowElevation = 4.dp,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            // First Row: Main Navigation (4 items)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                NavItem(
+                    icon = Icons.Default.AccountBalanceWallet,
+                    label = stringResource(R.string.nav_wallet),
+                    selected = selectedTab == 0,
+                    onClick = { onTabSelected(0) }
+                )
+                NavItem(
+                    icon = Icons.Default.Send,
+                    label = stringResource(R.string.nav_send),
+                    selected = selectedTab == 1,
+                    onClick = { onTabSelected(1) }
+                )
+                NavItem(
+                    icon = Icons.Default.History,
+                    label = stringResource(R.string.nav_history),
+                    selected = selectedTab == 2,
+                    onClick = { onTabSelected(2) }
+                )
+                NavItem(
+                    icon = Icons.Default.Settings,
+                    label = stringResource(R.string.nav_settings),
+                    selected = selectedTab == 3,
+                    onClick = { onTabSelected(3) }
+                )
+            }
+            
+            Divider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                thickness = 0.5.dp
+            )
+            
+            // Second Row: Additional Features (5 items)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                NavItem(
+                    icon = Icons.Default.SwapHoriz,
+                    label = stringResource(R.string.nav_exchange),
+                    selected = selectedTab == 4,
+                    onClick = { onTabSelected(4) },
+                    enabled = ChangeNowSwapService.isConfigured()
+                )
+                NavItem(
+                    icon = Icons.Default.ContactPage,
+                    label = stringResource(R.string.nav_contacts),
+                    selected = selectedTab == 5,
+                    onClick = { onTabSelected(5) }
+                )
+                NavItem(
+                    icon = Icons.Default.LocationOn,
+                    label = stringResource(R.string.nav_subaddresses),
+                    selected = selectedTab == 6,
+                    onClick = { onTabSelected(6) }
+                )
+                NavItem(
+                    icon = Icons.Default.QrCode,
+                    label = stringResource(R.string.nav_request),
+                    selected = selectedTab == 7,
+                    onClick = { onTabSelected(7) }
+                )
+                NavItem(
+                    icon = Icons.Default.Tune,
+                    label = stringResource(R.string.nav_enhanced_send_short),
+                    selected = selectedTab == 8,
+                    onClick = { onTabSelected(8) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NavItem(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    val color by animateColorAsState(
+        targetValue = when {
+            !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+            selected -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        },
+        label = "navItemColor"
+    )
+    
+    Column(
+        modifier = Modifier
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 4.dp, vertical = 8.dp)
+            .widthIn(min = 48.dp, max = 80.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = color,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
+}
+
+// ============================================================================
+// EXPORT KEYS DIALOG
+// ============================================================================
 
 @Composable
 fun ExportKeysDialog(
@@ -560,9 +1131,7 @@ fun ExportKeysDialog(
     val clipboardManager = LocalClipboardManager.current
     var viewKeyCopied by remember { mutableStateOf(false) }
     var spendKeyCopied by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     
-    // Get actual keys from wallet
     val viewKey = remember { walletSuite.viewKey }
     val spendKey = remember { walletSuite.spendKey }
     
@@ -570,7 +1139,7 @@ fun ExportKeysDialog(
         onDismissRequest = onDismiss,
         title = { 
             Text(
-                text = stringResource(R.string.export_keys_dialog_title),
+                text = "Export Wallet Keys",
                 fontWeight = FontWeight.Bold
             ) 
         },
@@ -587,7 +1156,7 @@ fun ExportKeysDialog(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = stringResource(R.string.export_keys_warning),
+                        text = "Security Warning!",
                         color = Color(0xFFFF9800),
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
@@ -595,13 +1164,13 @@ fun ExportKeysDialog(
                 }
                 
                 Text(
-                    text = stringResource(R.string.export_keys_info),
+                    text = "Anyone with these keys can access your funds. Store them securely and never share them.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
                 
                 KeyDisplayCard(
-                    label = stringResource(R.string.export_keys_view_key_label),
+                    label = "View Key",
                     keyValue = viewKey,
                     isCopied = viewKeyCopied,
                     onCopy = {
@@ -611,7 +1180,7 @@ fun ExportKeysDialog(
                 )
                 
                 KeyDisplayCard(
-                    label = stringResource(R.string.export_keys_spend_key_label),
+                    label = "Spend Key",
                     keyValue = spendKey,
                     isCopied = spendKeyCopied,
                     onCopy = {
@@ -623,7 +1192,7 @@ fun ExportKeysDialog(
         },
         confirmButton = {
             Button(onClick = onDismiss) {
-                Text(text = stringResource(R.string.dialog_close))
+                Text(text = "Close")
             }
         }
     )
@@ -653,7 +1222,9 @@ fun KeyDisplayCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
@@ -662,30 +1233,42 @@ fun KeyDisplayCard(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (keyValue.length > 40) 
-                        "${keyValue.take(20)}...${keyValue.takeLast(20)}" 
+                    text = if (keyValue.length > 40)
+                        "${keyValue.take(20)}...${keyValue.takeLast(20)}"
                     else keyValue,
                     fontSize = 10.sp,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                     modifier = Modifier.weight(1f)
                 )
+
                 IconButton(onClick = onCopy) {
                     Icon(
-                        if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                        contentDescription = stringResource(R.string.action_copy),
-                        tint = if (isCopied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                        imageVector = if (isCopied)
+                            Icons.Default.Check
+                        else
+                            Icons.Default.ContentCopy,
+                        contentDescription = "Copy",
+                        tint = if (isCopied)
+                            Color(0xFF4CAF50)
+                        else
+                            MaterialTheme.colorScheme.primary
                     )
                 }
             }
         }
     }
 }
+
+// ============================================================================
+// SECURITY SETTINGS DIALOG
+// ============================================================================
 
 @Composable
 fun SecuritySettingsDialog(onDismiss: () -> Unit) {
@@ -696,15 +1279,13 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
     var isLoading by remember { mutableStateOf(true) }
     var isSaving by remember { mutableStateOf(false) }
     
-    // Load current settings from SharedPreferences
     LaunchedEffect(Unit) {
         try {
             val prefs = context.getSharedPreferences("wallet_security", android.content.Context.MODE_PRIVATE)
             biometricEnabled = prefs.getBoolean("biometric_enabled", false)
             pinEnabled = prefs.getBoolean("pin_enabled", false)
         } catch (e: Exception) {
-            // Settings don't exist yet, use defaults (false)
-            Timber.d("SecuritySettings", "No saved settings found, using defaults")
+            Timber.d("Security", "Default settings not found, using defaults")
         }
         isLoading = false
     }
@@ -713,7 +1294,7 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { 
             Text(
-                text = stringResource(R.string.security_title),
+                text = "Security Settings",
                 fontWeight = FontWeight.Bold
             ) 
         },
@@ -728,26 +1309,26 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
                     }
                 } else {
                     SecurityOption(
-                        title = stringResource(R.string.security_biometric_title),
-                        subtitle = stringResource(R.string.security_biometric_subtitle),
+                        title = "Biometric Authentication",
+                        subtitle = "Use fingerprint or face recognition to access wallet",
                         checked = biometricEnabled,
                         onCheckedChange = { biometricEnabled = it },
                         enabled = !isSaving
                     )
                     
                     SecurityOption(
-                        title = stringResource(R.string.security_pin_title),
-                        subtitle = stringResource(R.string.security_pin_subtitle),
+                        title = "PIN Protection",
+                        subtitle = "Require PIN code for sensitive operations",
                         checked = pinEnabled,
                         onCheckedChange = { pinEnabled = it },
                         enabled = !isSaving
                     )
                     
                     Text(
-                        text = "Note: Full implementation requires androidx.biometric library and proper setup",
+                        text = "Note: Full implementation requires additional security modules",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        fontStyle = FontStyle.Italic
                     )
                 }
             }
@@ -758,7 +1339,6 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
                     scope.launch {
                         isSaving = true
                         try {
-                            // Save settings to SharedPreferences
                             val prefs = context.getSharedPreferences("wallet_security", android.content.Context.MODE_PRIVATE)
                             prefs.edit().apply {
                                 putBoolean("biometric_enabled", biometricEnabled)
@@ -766,10 +1346,10 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
                                 apply()
                             }
                             
-                            delay(300) // Brief delay to show save action
+                            delay(300)
                             onDismiss()
                         } catch (e: Exception) {
-                            Timber.e("SecuritySettings", "Failed to save settings", e)
+                            Timber.e("Security", "Error saving security settings", e)
                             isSaving = false
                         }
                     }
@@ -784,7 +1364,7 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                 }
-                Text(text = stringResource(R.string.dialog_close))
+                Text(text = "Save")
             }
         }
     )
@@ -859,12 +1439,63 @@ fun LoadingScreen(message: String) {
             )
             
             Text(
-                text = message.ifEmpty { stringResource(R.string.init_wallet) },
+                text = message.ifEmpty { "Initializing Wallet..." },
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onBackground,
                 textAlign = TextAlign.Center
             )
+        }
+    }
+}
+
+// ============================================================================
+// ERROR SCREEN
+// ============================================================================
+
+@Composable
+fun ErrorScreen(
+    message: String,
+    onRetry: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Icon(
+                Icons.Default.Error,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.error
+            )
+            
+            Text(
+                text = "Error",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error
+            )
+            
+            Text(
+                text = message,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
+            )
+            
+            Button(
+                onClick = onRetry,
+                modifier = Modifier.width(200.dp)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Retry")
+            }
         }
     }
 }
@@ -889,8 +1520,9 @@ fun HomeScreen(
     onSendClick: () -> Unit,
     onExchangeClick: () -> Unit = {}
 ) {
-    val balanceXMR = WalletSuite.convertAtomicToXmr(balance)
-    val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance)
+    val balanceXMR = WalletSuite.convertAtomicToXmr(balance).toDoubleOrNull() ?: 0.0
+    val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
+    val lockedXMR = WalletSuite.convertAtomicToXmr(lockedBalance).toDoubleOrNull() ?: 0.0
     val clipboardManager = LocalClipboardManager.current
     var addressCopied by remember { mutableStateOf(false) }
     
@@ -906,7 +1538,6 @@ fun HomeScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Balance Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { },
@@ -930,7 +1561,7 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                stringResource(R.string.wallet_total_balance),
+                                "Total Balance",
                                 color = Color.White.copy(0.9f),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
@@ -945,7 +1576,7 @@ fun HomeScreen(
                             
                             IconButton(onClick = onRefresh) {
                                 Icon(
-                                    Icons.Default.Refresh, stringResource(R.string.action_refresh),
+                                    Icons.Default.Refresh, "Refresh",
                                     tint = Color.White,
                                     modifier = Modifier.size(20.dp).rotate(if (isSyncing) rotation else 0f)
                                 )
@@ -953,17 +1584,15 @@ fun HomeScreen(
                         }
                         
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Total Balance with USD
                             Text(
-                                String.format("%.12f Ɱ", balanceXMR.toDoubleOrNull() ?: 0.0),
+                                String.format("%.6f %s", balanceXMR, stringResource(R.string.monero_symbol)),
                                 color = Color.White,
                                 fontSize = 36.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             
-                            // USD Value
                             usdRate?.let { rate ->
-                                val usdValue = (balanceXMR.toDoubleOrNull() ?: 0.0) * rate
+                                val usdValue = balanceXMR * rate
                                 Text(
                                     String.format("≈ $%.2f USD", usdValue),
                                     color = Color.White.copy(0.9f),
@@ -973,44 +1602,40 @@ fun HomeScreen(
                             }
                         }
                         
-                        // Unlocked and Locked Balances Side by Side
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            // Unlocked Balance
                             Column(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
-                                    stringResource(R.string.wallet_unlocked),
+                                    "Unlocked",
                                     color = Color.White.copy(0.7f),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    String.format("%.12f", unlockedXMR.toDoubleOrNull() ?: 0.0),
+                                    String.format("%.6f %s", unlockedXMR, stringResource(R.string.monero_symbol)),
                                     color = Color(0xFF1B5E20),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
                             
-                            // Locked Balance
-                            val lockedXMR = WalletSuite.convertAtomicToXmr(lockedBalance)
                             Column(
                                 modifier = Modifier.weight(1f),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
-                                    stringResource(R.string.wallet_locked),
+                                    "Locked",
                                     color = Color.White.copy(0.7f),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                                 Text(
-                                    String.format("%.12f", lockedXMR.toDoubleOrNull() ?: 0.0),
+                                    String.format("%.6f %s", lockedXMR, stringResource(R.string.monero_symbol)),
                                     color = Color.White.copy(0.85f),
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -1027,7 +1652,7 @@ fun HomeScreen(
                                     trackColor = Color.White.copy(0.3f)
                                 )
                                 Text(
-                                    stringResource(R.string.wallet_syncing, syncProgress, walletHeight, daemonHeight),
+                                    String.format("Syncing: %.1f%% (%d/%d)", syncProgress, walletHeight, daemonHeight),
                                     color = Color.White.copy(0.9f),
                                     fontSize = 12.sp
                                 )
@@ -1038,28 +1663,26 @@ fun HomeScreen(
             }
         }
         
-        // Quick Actions
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 QuickActionButton(
-                    Icons.Default.CallReceived, stringResource(R.string.action_receive),
+                    Icons.Default.CallReceived, "Receive",
                     Modifier.weight(1f), onReceiveClick, Color(0xFF4CAF50)
                 )
                 QuickActionButton(
-                    Icons.Default.Send, stringResource(R.string.nav_send),
+                    Icons.Default.Send, "Send",
                     Modifier.weight(1f), onSendClick, Color(0xFFFF6600)
                 )
                 QuickActionButton(
-                    Icons.Default.SwapHoriz, stringResource(R.string.action_exchange),
+                    Icons.Default.SwapHoriz, "Exchange",
                     Modifier.weight(1f), onExchangeClick, Color(0xFF9C27B0)
                 )
             }
         }
         
-        // Address Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) { },
@@ -1070,7 +1693,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(stringResource(R.string.wallet_your_address), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Your Address", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -1096,7 +1719,7 @@ fun HomeScreen(
                             }) {
                                 Icon(
                                     if (addressCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                    stringResource(R.string.action_copy),
+                                    "Copy",
                                     tint = if (addressCopied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -1161,7 +1784,7 @@ fun SendScreen(
     var isSending by remember { mutableStateOf(false) }
     var showTxSearch by remember { mutableStateOf(false) }
     
-    val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance)
+    val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     
@@ -1169,7 +1792,7 @@ fun SendScreen(
         successMessage?.let {
             scope.launch {
                 snackbarHost.showSnackbar(
-                    "Transaction sent! TxID: ${it.take(16)}...",
+                    "Transaction sent! TX: ${it.take(16)}...",
                     duration = SnackbarDuration.Long
                 )
             }
@@ -1188,7 +1811,7 @@ fun SendScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Text(stringResource(R.string.send_title), fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Text("Send XMR", fontSize = 28.sp, fontWeight = FontWeight.Bold)
             }
             
             item {
@@ -1203,8 +1826,13 @@ fun SendScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(stringResource(R.string.send_available_balance), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
-                            Text("$unlockedXMR XMR", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4CAF50))
+                            Text("Available Balance", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
+                            Text(
+                                String.format("%.6f %s", unlockedXMR, stringResource(R.string.monero_symbol)), 
+                                fontSize = 28.sp, 
+                                fontWeight = FontWeight.Bold, 
+                                color = Color(0xFF4CAF50)
+                            )
                         }
                         Icon(Icons.Default.AccountBalance, null, tint = Color(0xFF4CAF50).copy(0.3f), modifier = Modifier.size(48.dp))
                     }
@@ -1215,20 +1843,19 @@ fun SendScreen(
                 OutlinedTextField(
                     value = recipient,
                     onValueChange = { recipient = it },
-                    label = { Text(stringResource(R.string.send_recipient_address)) },
+                    label = { Text("Recipient Address") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     trailingIcon = {
                         IconButton(onClick = { 
-                            // Launch QR scanner (requires implementation)
                             scope.launch {
                                 snackbarHost.showSnackbar(
-                                    "QR Scanner not yet implemented. Please enter address manually.",
+                                    "QR scanner not implemented in this version",
                                     duration = SnackbarDuration.Short
                                 )
                             }
                         }) {
-                            Icon(Icons.Default.QrCode, stringResource(R.string.send_scan_qr))
+                            Icon(Icons.Default.QrCode, "Scan QR")
                         }
                     },
                     maxLines = 3
@@ -1239,15 +1866,16 @@ fun SendScreen(
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
-                    label = { Text(stringResource(R.string.send_amount)) },
+                    label = { Text("Amount") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     trailingIcon = {
-                        TextButton(onClick = { amount = unlockedXMR }) {
-                            Text(stringResource(R.string.send_max), fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { amount = unlockedXMR.toString() }) {
+                            Text("MAX", fontWeight = FontWeight.Bold)
                         }
                     },
-                    singleLine = true
+                    singleLine = true,
+                    prefix = { Text(stringResource(R.string.monero_symbol) + " ") }
                 )
             }
             
@@ -1262,10 +1890,12 @@ fun SendScreen(
                 ) {
                     if (isSending) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 3.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Creating Transaction...")
                     } else {
                         Icon(Icons.Default.Send, null)
                         Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.send_transaction), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Send Transaction", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1277,7 +1907,7 @@ fun SendScreen(
                 ) {
                     Icon(Icons.Default.Search, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.action_search_transaction))
+                    Text("Search Transaction")
                 }
             }
         }
@@ -1315,7 +1945,7 @@ fun TransactionConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!isSending) onDismiss() },
-        title = { Text(stringResource(R.string.send_confirm_title), fontWeight = FontWeight.Bold) },
+        title = { Text("Confirm Transaction", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Surface(
@@ -1327,8 +1957,13 @@ fun TransactionConfirmDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(stringResource(R.string.send_confirm_amount), fontWeight = FontWeight.SemiBold)
-                        Text("$amount XMR", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Amount", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "$amount XMR", 
+                            color = MaterialTheme.colorScheme.primary, 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 18.sp
+                        )
                     }
                 }
                 
@@ -1340,7 +1975,7 @@ fun TransactionConfirmDialog(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(stringResource(R.string.send_confirm_to), fontWeight = FontWeight.SemiBold)
+                        Text("To", fontWeight = FontWeight.SemiBold)
                         Text(
                             if (recipient.length > 30) "${recipient.take(15)}...${recipient.takeLast(15)}" else recipient,
                             fontSize = 11.sp,
@@ -1349,10 +1984,10 @@ fun TransactionConfirmDialog(
                     }
                 }
                 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                     Icon(Icons.Default.Warning, null, tint = Color(0xFFFF9800), modifier = Modifier.size(20.dp))
                     Text(
-                        stringResource(R.string.send_confirm_warning),
+                        "Monero transactions are irreversible. Please verify the address before confirming.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(0.7f)
                     )
@@ -1365,12 +2000,12 @@ fun TransactionConfirmDialog(
                     CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                 }
-                Text(stringResource(R.string.send_confirm_button))
+                Text("Confirm Send")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = !isSending) {
-                Text(stringResource(R.string.dialog_cancel))
+                Text("Cancel")
             }
         }
     )
@@ -1385,7 +2020,6 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
     val clipboardManager = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     
-    // Generate QR code
     val qrBitmap = remember(address) {
         generateQRCode(address, 512)
     }
@@ -1399,13 +2033,13 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
     
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.receive_title), fontWeight = FontWeight.Bold) },
+        title = { Text("Receive Monero", fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(stringResource(R.string.receive_your_address), fontWeight = FontWeight.SemiBold)
+                Text("Your Address", fontWeight = FontWeight.SemiBold)
                 
                 Surface(
                     shape = RoundedCornerShape(12.dp),
@@ -1417,7 +2051,6 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // QR Code display
                         if (qrBitmap != null) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -1426,14 +2059,13 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
                             ) {
                                 Image(
                                     bitmap = qrBitmap.asImageBitmap(),
-                                    contentDescription = stringResource(R.string.qr_code_placeholder),
+                                    contentDescription = "QR Code",
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .padding(8.dp)
                                 )
                             }
                         } else {
-                            // Fallback if QR generation fails
                             Box(
                                 modifier = Modifier
                                     .size(200.dp)
@@ -1478,13 +2110,13 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
                         null
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(if (copied) stringResource(R.string.status_copied) else stringResource(R.string.receive_copy_address))
+                    Text(if (copied) "Address Copied!" else "Copy Address")
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.dialog_close))
+                Text("Close")
             }
         }
     )
@@ -1501,12 +2133,15 @@ fun TransactionSearchDialog(walletSuite: WalletSuite, onDismiss: () -> Unit) {
     var searchResult by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
+    // Get the string resource outside the callback
+    val moneroSymbol = stringResource(R.string.monero_symbol)
+    
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.action_search_transaction), fontWeight = FontWeight.Bold) },
+        title = { Text("Search Transaction", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(stringResource(R.string.tx_search_info), fontSize = 12.sp)
+                Text("Enter a transaction ID to search and import it", fontSize = 12.sp)
                 
                 OutlinedTextField(
                     value = txId,
@@ -1515,7 +2150,7 @@ fun TransactionSearchDialog(walletSuite: WalletSuite, onDismiss: () -> Unit) {
                         searchResult = null
                         errorMessage = null
                     },
-                    label = { Text(stringResource(R.string.tx_search_id)) },
+                    label = { Text("Transaction ID") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     enabled = !isSearching,
@@ -1567,12 +2202,12 @@ fun TransactionSearchDialog(walletSuite: WalletSuite, onDismiss: () -> Unit) {
                     walletSuite.searchAndImportTransaction(txId, object : WalletSuite.TransactionSearchCallback {
                         override fun onTransactionFound(txId: String, amount: Long, confirmations: Long, blockHeight: Long) {
                             isSearching = false
-                            searchResult = "Transaction found!\nAmount: ${WalletSuite.convertAtomicToXmr(amount)} XMR\nConfirmations: $confirmations"
+                            searchResult = "Transaction found! Amount: ${WalletSuite.convertAtomicToXmr(amount)} $moneroSymbol, Confirmations: $confirmations"
                         }
                         
                         override fun onTransactionNotFound(txId: String) {
                             isSearching = false
-                            errorMessage = "Transaction not found in wallet history"
+                            errorMessage = "Transaction not found"
                         }
                         
                         override fun onError(error: String) {
@@ -1583,12 +2218,12 @@ fun TransactionSearchDialog(walletSuite: WalletSuite, onDismiss: () -> Unit) {
                 },
                 enabled = txId.isNotEmpty() && !isSearching
             ) {
-                Text(stringResource(R.string.action_search))
+                Text("Search")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.dialog_close))
+                Text("Close")
             }
         }
     )
@@ -1605,7 +2240,6 @@ fun HistoryScreen(walletSuite: WalletSuite) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     
-    // Load real transaction data
     LaunchedEffect(Unit) {
         scope.launch {
             isLoading = true
@@ -1613,10 +2247,14 @@ fun HistoryScreen(walletSuite: WalletSuite) {
                 override fun onSuccess(txList: List<TransactionInfo>) {
                     transactions = txList.map { txInfo ->
                         val isReceived = txInfo.direction == TransactionInfo.Direction.Direction_In
+                        val absoluteAmount = if (txInfo.amount < 0) -txInfo.amount else txInfo.amount
                         Transaction(
                             type = if (isReceived) "Received" else "Sent",
-                            amount = WalletSuite.convertAtomicToXmr(Math.abs(txInfo.amount)),
-                            date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                            amount = String.format(
+                                "%.6f XMR",
+                                WalletSuite.convertAtomicToXmr(absoluteAmount).toDoubleOrNull() ?: 0.0
+                            ),
+                            date = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
                                 .format(Date(txInfo.timestamp * 1000)),
                             confirmed = !txInfo.isPending,
                             txId = txInfo.hash
@@ -1648,7 +2286,7 @@ fun HistoryScreen(walletSuite: WalletSuite) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.history_title),
+                        text = "Transaction History",
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
@@ -1664,7 +2302,7 @@ fun HistoryScreen(walletSuite: WalletSuite) {
                     }) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.action_refresh),
+                            contentDescription = "Refresh",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -1706,9 +2344,8 @@ fun HistoryScreen(walletSuite: WalletSuite) {
                                 tint = MaterialTheme.colorScheme.error
                             )
                             Text(
-                                text = errorMessage ?: "",
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 14.sp
+                                errorMessage ?: "Unknown error",
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -1738,7 +2375,7 @@ fun HistoryScreen(walletSuite: WalletSuite) {
                                 tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
                             )
                             Text(
-                                text = stringResource(R.string.history_no_transactions),
+                                text = "No transactions yet",
                                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                                 fontSize = 16.sp,
                                 textAlign = TextAlign.Center
@@ -1817,7 +2454,7 @@ fun TransactionCard(transaction: Transaction) {
                 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${if (transaction.type == "Received") "+" else "-"}${transaction.amount} XMR",
+                        text = "${if (transaction.type == "Received") "+" else "-"}${transaction.amount}",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (transaction.type == "Received") 
@@ -1837,7 +2474,7 @@ fun TransactionCard(transaction: Transaction) {
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = stringResource(R.string.history_confirmed),
+                                text = "Confirmed",
                                 fontSize = 11.sp,
                                 color = Color(0xFF4CAF50)
                             )
@@ -1854,7 +2491,7 @@ fun TransactionCard(transaction: Transaction) {
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = stringResource(R.string.history_pending),
+                                text = "Pending",
                                 fontSize = 11.sp,
                                 color = Color(0xFFFF9800)
                             )
@@ -1876,7 +2513,7 @@ fun TransactionCard(transaction: Transaction) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = stringResource(R.string.tx_search_id),
+                        text = "Transaction ID",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
@@ -1903,7 +2540,7 @@ fun TransactionCard(transaction: Transaction) {
                         ) {
                             Icon(
                                 if (txIdCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                contentDescription = stringResource(R.string.action_copy),
+                                contentDescription = "Copy",
                                 tint = if (txIdCopied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -1929,7 +2566,6 @@ fun TransactionCard(transaction: Transaction) {
 @Composable
 fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBalance: Long) {
     
-    // Check if Exchange is available
     if (!ChangeNowSwapService.isConfigured()) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -1953,7 +2589,7 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "API key not configured. Add changenow.api.key to gradle.properties",
+                    text = "API key not configured. Please check your build configuration.",
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
@@ -1974,32 +2610,24 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
     var toAddress by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var exchangeStatus by remember { mutableStateOf<ChangeNowSwapService.ExchangeStatus?>(null) }
-    val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance)
+    val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
     
-    // FIX: Get estimates on background thread
     LaunchedEffect(fromAmount, fromCurrency, toCurrency) {
         if (fromAmount.isNotEmpty()) {
             val amount = fromAmount.toDoubleOrNull()
             if (amount != null && amount > 0) {
-                delay(500) // Debounce
+                delay(500)
                 isLoading = true
                 
-                // Move to IO dispatcher
-                withContext(Dispatchers.IO) {
-                    changeNowService.getEstimate(fromCurrency, toCurrency, amount)
-                        .onSuccess { estimate ->
-                            withContext(Dispatchers.Main) {
-                                estimatedAmount = estimate.estimatedAmount
-                                isLoading = false
-                            }
-                        }
-                        .onFailure { 
-                            withContext(Dispatchers.Main) {
-                                estimatedAmount = null
-                                isLoading = false
-                            }
-                        }
-                }
+                changeNowService.getEstimate(fromCurrency, toCurrency, amount)
+                    .onSuccess { estimate ->
+                        estimatedAmount = estimate.estimatedAmount
+                        isLoading = false
+                    }
+                    .onFailure { 
+                        estimatedAmount = null
+                        isLoading = false
+                    }
             }
         } else { 
             estimatedAmount = null 
@@ -2038,7 +2666,7 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                                 color = MaterialTheme.colorScheme.onSurface.copy(0.7f)
                             )
                             Text(
-                                "$unlockedXMR XMR", 
+                                String.format("%.6f %s", unlockedXMR, stringResource(R.string.monero_symbol)), 
                                 fontSize = 24.sp, 
                                 fontWeight = FontWeight.Bold, 
                                 color = Color(0xFF4CAF50)
@@ -2080,10 +2708,11 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                                 onValueChange = { fromAmount = it }, 
                                 modifier = Modifier.weight(2f), 
                                 singleLine = true, 
-                                placeholder = { Text("0.0") },
+                                placeholder = { Text("Enter amount") },
+                                prefix = { Text(stringResource(R.string.monero_symbol) + " ") },
                                 trailingIcon = { 
                                     if (fromCurrency == "xmr") { 
-                                        TextButton(onClick = { fromAmount = unlockedXMR }) { 
+                                        TextButton(onClick = { fromAmount = unlockedXMR.toString() }) { 
                                             Text("MAX", fontWeight = FontWeight.Bold, fontSize = 12.sp) 
                                         } 
                                     } 
@@ -2150,7 +2779,7 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                                     ) 
                                 } else { 
                                     Text(
-                                        text = estimatedAmount?.let { "≈ %.6f".format(it) } ?: "0.0", 
+                                        text = estimatedAmount?.let { String.format("%.6f", it) } ?: "0.0", 
                                         fontSize = 16.sp, 
                                         fontWeight = FontWeight.Medium
                                     ) 
@@ -2178,29 +2807,24 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                         scope.launch {
                             isLoading = true
                             
-                            // FIX: Execute on IO thread
-                            withContext(Dispatchers.IO) {
-                                changeNowService.createExchange(
-                                    fromCurrency, 
-                                    toCurrency, 
-                                    fromAmount.toDoubleOrNull() ?: 0.0, 
-                                    toAddress, 
-                                    if (fromCurrency == "xmr") walletAddress else null
-                                ).onSuccess { status ->
-                                    withContext(Dispatchers.Main) {
-                                        exchangeStatus = status
-                                        snackbarHost.showSnackbar(
-                                            "Exchange created! Send to: ${status.payinAddress}"
-                                        )
-                                        isLoading = false
-                                    }
-                                }.onFailure { 
-                                    withContext(Dispatchers.Main) {
-                                        snackbarHost.showSnackbar("Error: ${it.message}")
-                                        isLoading = false
-                                    }
-                                }
+                            val result = changeNowService.createExchange(
+                                fromCurrency, 
+                                toCurrency, 
+                                fromAmount.toDoubleOrNull() ?: 0.0, 
+                                toAddress, 
+                                if (fromCurrency == "xmr") walletAddress else null
+                            )
+                            
+                            result.onSuccess { status ->
+                                exchangeStatus = status
+                                snackbarHost.showSnackbar(
+                                    "Exchange created! Send ${fromCurrency.uppercase()} to: ${status.payinAddress}"
+                                )
+                            }.onFailure { 
+                                snackbarHost.showSnackbar("Exchange failed: ${it.message ?: "Unknown error"}")
                             }
+                            
+                            isLoading = false
                         }
                     }, 
                     modifier = Modifier.fillMaxWidth().height(56.dp), 
@@ -2214,11 +2838,11 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                             strokeWidth = 3.dp
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text("Processing...")
+                        Text("Creating Exchange...")
                     } else {
                         Icon(Icons.Default.SwapHoriz, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Exchange", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Start Exchange", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -2229,7 +2853,7 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                         modifier = Modifier.fillMaxWidth(), 
                         shape = RoundedCornerShape(16.dp), 
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
+                ) {
                         Column(
                             modifier = Modifier.padding(20.dp), 
                             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2259,16 +2883,15 @@ fun SettingsScreen(
     walletSuite: WalletSuite,
     walletAddress: String
 ) {
-    // ALL STATE VARIABLES - FIXED
     var showRescanDialog by remember { mutableStateOf(false) }
     var showSeedDialog by remember { mutableStateOf(false) }
     var showNodeDialog by remember { mutableStateOf(false) }
     var showTxSearchDialog by remember { mutableStateOf(false) }
-    var showExportKeysDialog by remember { mutableStateOf(false) }  // ADDED
-    var showSecurityDialog by remember { mutableStateOf(false) }     // ADDED
+    var showExportKeysDialog by remember { mutableStateOf(false) }
+    var showSecurityDialog by remember { mutableStateOf(false) }
     var rescanProgress by remember { mutableStateOf(0.0) }
     var isRescanning by remember { mutableStateOf(false) }
-    
+
     LaunchedEffect(Unit) {
         walletSuite.setRescanBalanceCallback(object : WalletSuite.RescanBalanceCallback {
             override fun onBalanceUpdated(balance: Long, unlockedBalance: Long) {
@@ -2278,287 +2901,187 @@ fun SettingsScreen(
             }
         })
     }
-    
+
     val scope = rememberCoroutineScope()
-    val snackbarHost = remember { SnackbarHostState() }
-    val context = LocalContext.current
-    
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Text(
-                    text = stringResource(R.string.nav_settings),
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
-            
-            // Wallet Info Card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                text = "Settings",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Text("Wallet Info", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = stringResource(R.string.settings_wallet_info),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = "Status",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                         )
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = stringResource(R.string.settings_status),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (walletSuite.isReady) Color(0xFF4CAF50) 
-                                            else Color(0xFFFF6600)
-                                        )
-                                )
-                                Text(
-                                    text = if (walletSuite.isReady) stringResource(R.string.settings_ready) else stringResource(R.string.settings_not_ready),
-                                    color = if (walletSuite.isReady) Color(0xFF4CAF50) else Color(0xFFFF6600),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Syncing",
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
-                            Text(
-                                text = if (walletSuite.isSyncing) stringResource(R.string.common_yes) else stringResource(R.string.common_no),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
+                        Text(
+                            text = if (walletSuite.isSyncing) "Syncing" else "Ready",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
-            
-            item {
-                Text(
-                    text = stringResource(R.string.settings_maintenance),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-            
-            item {
-                SettingsCard(
-                    title = stringResource(R.string.settings_rescan_blockchain),
-                    subtitle = if (isRescanning) 
-                        stringResource(R.string.settings_rescan_progress, rescanProgress)
-                    else 
-                        stringResource(R.string.settings_rescan_subtitle),
-                    icon = Icons.Default.Refresh,
-                    onClick = { showRescanDialog = true },
-                    enabled = !isRescanning
-                )
-            }
-            
-            item {
-                SettingsCard(
-                    title = stringResource(R.string.settings_force_refresh),
-                    subtitle = stringResource(R.string.settings_force_refresh_subtitle),
-                    icon = Icons.Default.Refresh,
-                    onClick = { walletSuite.triggerImmediateSync() }
-                )
-            }
-            
-            item {
-                Text(
-                    text = stringResource(R.string.settings_backup_security),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-            
-            item {
-                SettingsCard(
-                    title = stringResource(R.string.settings_view_seed),
-                    subtitle = stringResource(R.string.settings_view_seed_subtitle),
-                    icon = Icons.Default.Key,
-                    onClick = { showSeedDialog = true }
-                )
-            }
-            
-            item {
-                SettingsCard(
-                    title = stringResource(R.string.settings_export_keys),
-                    subtitle = stringResource(R.string.settings_export_keys_subtitle),
-                    icon = Icons.Default.Key,
-                    onClick = { showExportKeysDialog = true }
-                )
-            }
-            
-            item {
-                Text(
-                    text = stringResource(R.string.settings_network),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-            
-            item {
-                SettingsCard(
-                    title = stringResource(R.string.settings_node_settings),
-                    subtitle = stringResource(R.string.settings_current_node, walletSuite.daemonAddress, walletSuite.daemonPort),
-                    icon = Icons.Default.Cloud,
-                    onClick = { showNodeDialog = true }
-                )
-            }
-            
-            item {
-                SettingsCard(
-                    title = stringResource(R.string.settings_reload_config),
-                    subtitle = stringResource(R.string.settings_reload_config_subtitle),
-                    icon = Icons.Default.Settings,
-                    onClick = { 
-                        scope.launch {
-                            try {
-                                // Call reload - it runs on background thread internally
-                                walletSuite.reloadConfiguration()
-                                
-                                // Show immediate feedback since the method returns quickly
-                                // The actual daemon reconnection happens in background
-                                snackbarHost.showSnackbar(
-                                    context.getString(
-                                        R.string.reload_config_initiated,
-                                        walletSuite.daemonAddress,
-                                        walletSuite.daemonPort
-                                    ),
-                                    duration = SnackbarDuration.Long
-                                )
-                            } catch (e: Exception) {
-                                snackbarHost.showSnackbar(
-                                    context.getString(
-                                        R.string.reload_config_failed,
-                                        e.message ?: "Unknown error"
-                                    ),
-                                    duration = SnackbarDuration.Long
-                                )
-                            }
-                        }
-                    }
-                )
-            }
-            
-            item {
-                Text(
-                    text = stringResource(R.string.settings_advanced),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-            
-            item {
-                SettingsCard(
-                    title = stringResource(R.string.settings_tx_search),
-                    subtitle = stringResource(R.string.settings_tx_search_subtitle),
-                    icon = Icons.Default.Search,
-                    onClick = { showTxSearchDialog = true }
-                )
-            }
-            
-            item {
-                SettingsCard(
-                    title = stringResource(R.string.settings_security),
-                    subtitle = stringResource(R.string.settings_security_subtitle),
-                    icon = Icons.Default.Security,
-                    onClick = { showSecurityDialog = true }
-                )
-            }
         }
-        
-        SnackbarHost(
-            hostState = snackbarHost,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp)
-        )
+
+        item {
+            Text(
+                text = "Maintenance",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            SettingsCard(
+                title = "Rescan Blockchain",
+                subtitle = if (isRescanning) "Rescanning: ${String.format("%.1f%%", rescanProgress)}" else "Rescan wallet to fix balance issues",
+                icon = Icons.Default.Refresh,
+                onClick = { showRescanDialog = true },
+                enabled = !isRescanning
+            )
+        }
+
+        item {
+            SettingsCard(
+                title = "Force Refresh",
+                subtitle = "Force immediate wallet sync",
+                icon = Icons.Default.Refresh,
+                onClick = { walletSuite.triggerImmediateSync() }
+            )
+        }
+
+        item {
+            Text(
+                text = "Backup & Security",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            SettingsCard(
+                title = "View Seed Phrase",
+                subtitle = "View your 25-word mnemonic seed",
+                icon = Icons.Default.Key,
+                onClick = { showSeedDialog = true }
+            )
+        }
+
+        item {
+            SettingsCard(
+                title = "Export Keys",
+                subtitle = "Export view and spend keys",
+                icon = Icons.Default.Key,
+                onClick = { showExportKeysDialog = true }
+            )
+        }
+
+        item {
+            Text(
+                text = "Network",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            SettingsCard(
+                title = "Node Settings",
+                subtitle = "Current node: ${walletSuite.daemonAddress}:${walletSuite.daemonPort}",
+                icon = Icons.Default.Cloud,
+                onClick = { showNodeDialog = true }
+            )
+        }
+
+        item {
+            SettingsCard(
+                title = "Transaction Search",
+                subtitle = "Search and import transactions",
+                icon = Icons.Default.Search,
+                onClick = { showTxSearchDialog = true }
+            )
+        }
+
+        item {
+            SettingsCard(
+                title = "Security Settings",
+                subtitle = "Biometric & PIN protection",
+                icon = Icons.Default.Lock,
+                onClick = { showSecurityDialog = true }
+            )
+        }
     }
-    
-    // ALL DIALOGS
+
     if (showRescanDialog) {
         RescanDialog(
-            onConfirm = {
+            onConfirm = { 
                 showRescanDialog = false
                 isRescanning = true
-                walletSuite.rescanBlockchain()
+                walletSuite.rescanBlockchain() 
             },
             onDismiss = { showRescanDialog = false }
         )
     }
-    
+
     if (showSeedDialog) {
         SeedPhraseDialog(
             walletSuite = walletSuite,
             onDismiss = { showSeedDialog = false }
         )
     }
-    
+
     if (showNodeDialog) {
         NodeConfigDialog(
             walletSuite = walletSuite,
             onDismiss = { showNodeDialog = false }
         )
     }
-    
+
     if (showTxSearchDialog) {
         TransactionSearchDialog(
             walletSuite = walletSuite,
             onDismiss = { showTxSearchDialog = false }
         )
     }
-    
+
     if (showExportKeysDialog) {
         ExportKeysDialog(
             walletSuite = walletSuite,
             onDismiss = { showExportKeysDialog = false }
         )
     }
-    
+
     if (showSecurityDialog) {
         SecuritySettingsDialog(
             onDismiss = { showSecurityDialog = false }
@@ -2578,62 +3101,51 @@ fun SettingsCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (enabled) MaterialTheme.colorScheme.surface 
-            else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+            containerColor = if (enabled) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         onClick = onClick,
         enabled = enabled
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = subtitle,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
-            
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+            }
+
             Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
+                imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                modifier = Modifier.size(24.dp)
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                modifier = Modifier.size(20.dp)
             )
         }
     }
@@ -2652,12 +3164,12 @@ fun RescanDialog(
         onDismissRequest = onDismiss,
         title = { 
             Text(
-                text = stringResource(R.string.settings_rescan_blockchain),
+                text = "Rescan Blockchain",
                 fontWeight = FontWeight.Bold
             ) 
         },
         text = { 
-            Text(text = stringResource(R.string.rescan_message)) 
+            Text(text = "This will rescan the entire blockchain to fix balance issues. It may take several minutes.") 
         },
         confirmButton = {
             Button(
@@ -2666,12 +3178,12 @@ fun RescanDialog(
                     containerColor = MaterialTheme.colorScheme.primary
                 )
             ) {
-                Text(text = stringResource(R.string.rescan_start))
+                Text(text = "Start Rescan")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = stringResource(R.string.dialog_cancel))
+                Text(text = "Cancel")
             }
         }
     )
@@ -2686,7 +3198,6 @@ fun SeedPhraseDialog(
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     
-    // Load seed phrase asynchronously using the safe async method
     LaunchedEffect(Unit) {
         walletSuite.getSeedAsync(object : WalletSuite.SeedCallback {
             override fun onSuccess(seed: String) {
@@ -2705,7 +3216,7 @@ fun SeedPhraseDialog(
         onDismissRequest = onDismiss,
         title = { 
             Text(
-                text = stringResource(R.string.seed_title),
+                text = "Seed Phrase",
                 fontWeight = FontWeight.Bold
             ) 
         },
@@ -2722,14 +3233,14 @@ fun SeedPhraseDialog(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = stringResource(R.string.seed_warning),
+                        text = "Security Warning!",
                         color = Color(0xFFFF9800),
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
                     )
                 }
                 Text(
-                    text = stringResource(R.string.seed_info),
+                    text = "Anyone with this seed phrase can access your funds. Store it securely and never share it.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -2790,7 +3301,7 @@ fun SeedPhraseDialog(
                                     ) {
                                         Icon(
                                             if (seedCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                                            contentDescription = stringResource(R.string.action_copy),
+                                            contentDescription = "Copy",
                                             tint = if (seedCopied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
                                         )
                                     }
@@ -2810,7 +3321,7 @@ fun SeedPhraseDialog(
         },
         confirmButton = {
             Button(onClick = onDismiss) {
-                Text(text = stringResource(R.string.dialog_close))
+                Text(text = "Close")
             }
         }
     )
@@ -2825,14 +3336,14 @@ fun NodeConfigDialog(
         onDismissRequest = onDismiss,
         title = { 
             Text(
-                text = stringResource(R.string.node_title),
+                text = "Node Settings",
                 fontWeight = FontWeight.Bold
             ) 
         },
         text = { 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = stringResource(R.string.node_current_daemon),
+                    text = "Current Daemon",
                     fontWeight = FontWeight.SemiBold
                 )
                 Surface(
@@ -2848,7 +3359,7 @@ fun NodeConfigDialog(
                     )
                 }
                 Text(
-                    text = stringResource(R.string.node_change_info),
+                    text = "To change the node, modify the wallet configuration.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -2856,7 +3367,1776 @@ fun NodeConfigDialog(
         },
         confirmButton = {
             Button(onClick = onDismiss) {
-                Text(text = stringResource(R.string.dialog_close))
+                Text(text = "Close")
+            }
+        }
+    )
+}
+
+// ============================================================================
+// ADDRESS BOOK SCREEN
+// ============================================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddressBookScreen(
+    dataStore: WalletDataStore,
+    onSelectAddress: (String) -> Unit = {},
+    onClose: () -> Unit = {}
+) {
+    var entries by remember { mutableStateOf(dataStore.loadAddressBook()) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedEntry by remember { mutableStateOf<AddressBookEntry?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var entryToDelete by remember { mutableStateOf<AddressBookEntry?>(null) }
+    val scope = rememberCoroutineScope()
+    
+    val filteredEntries = remember(entries, searchQuery) {
+        entries.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+            it.address.contains(searchQuery, ignoreCase = true) ||
+            it.notes.contains(searchQuery, ignoreCase = true)
+        }.sortedWith(
+            compareByDescending<AddressBookEntry> { it.isFavorite }
+                .thenByDescending { it.dateAdded }
+        )
+    }
+    
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Address Book", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showAddDialog = true }) {
+                        Icon(Icons.Default.Add, "Add Contact")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(padding),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = { Text("Search Contacts") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                shape = RoundedCornerShape(16.dp),
+                singleLine = true
+            )
+            
+            if (filteredEntries.isEmpty()) {
+                EmptyState(
+                    icon = Icons.Default.ContactPage,
+                    title = if (searchQuery.isNotEmpty()) "No matching contacts" else "No Contacts",
+                    message = if (searchQuery.isNotEmpty()) 
+                        "Try a different search term"
+                    else 
+                        "Add your first contact to get started"
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredEntries) { entry ->
+                        AddressBookCard(
+                            entry = entry,
+                            onEdit = { selectedEntry = entry },
+                            onDelete = {
+                                entryToDelete = entry
+                                showDeleteConfirm = true
+                            },
+                            onToggleFavorite = {
+                                scope.launch {
+                                    entries = entries.map {
+                                        if (it.id == entry.id) it.copy(isFavorite = !it.isFavorite) else it
+                                    }
+                                    dataStore.saveAddressBook(entries)
+                                }
+                            },
+                            onSelect = { onSelectAddress(entry.address) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    if (showAddDialog || selectedEntry != null) {
+        AddEditAddressDialog(
+            entry = selectedEntry,
+            onSave = { updatedEntry ->
+                scope.launch {
+                    if (selectedEntry == null) {
+                        entries = entries + updatedEntry
+                    } else {
+                        entries = entries.map { if (it.id == updatedEntry.id) updatedEntry else it }
+                    }
+                    dataStore.saveAddressBook(entries)
+                    selectedEntry = null
+                    showAddDialog = false
+                }
+            },
+            onDismiss = {
+                selectedEntry = null
+                showAddDialog = false
+            }
+        )
+    }
+    
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Contact") },
+            text = { Text("Are you sure you want to delete ${entryToDelete?.name ?: "this contact"}?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            entryToDelete?.let {
+                                entries = entries.filter { e -> e.id != it.id }
+                                dataStore.saveAddressBook(entries)
+                            }
+                            showDeleteConfirm = false
+                            entryToDelete = null
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { 
+                    showDeleteConfirm = false
+                    entryToDelete = null
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun AddressBookCard(
+    entry: AddressBookEntry,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onSelect: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    
+                    Column {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                entry.name,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (entry.isFavorite) {
+                                Icon(
+                                    Icons.Default.Star,
+                                    contentDescription = "Remove Favorite",
+                                    tint = Color(0xFFFFD700),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                                .format(Date(entry.dateAdded)),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+                
+                Row {
+                    IconButton(
+                        onClick = onToggleFavorite,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            if (entry.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = if (entry.isFavorite) "Remove Favorite" else "Add to Favorites",
+                            tint = if (entry.isFavorite) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "Edit",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+            
+            Text(
+                entry.address,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            
+            if (entry.notes.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        entry.notes,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+            }
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(
+                    onClick = onSelect,
+                    modifier = Modifier.height(36.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Send")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AddEditAddressDialog(
+    entry: AddressBookEntry?,
+    onSave: (AddressBookEntry) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(entry?.name ?: "") }
+    var address by remember { mutableStateOf(entry?.address ?: "") }
+    var notes by remember { mutableStateOf(entry?.notes ?: "") }
+    var isFavorite by remember { mutableStateOf(entry?.isFavorite ?: false) }
+    var addressError by remember { mutableStateOf<String?>(null) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { 
+            Text(
+                if (entry == null) "Add Contact" else "Edit Contact",
+                fontWeight = FontWeight.Bold
+            ) 
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Contact Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = name.isEmpty(),
+                    supportingText = {
+                        if (name.isEmpty()) {
+                            Text("Name is required")
+                        }
+                    }
+                )
+                
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { 
+                        address = it
+                        addressError = null
+                    },
+                    label = { Text("Monero Address") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3,
+                    isError = addressError != null,
+                    supportingText = {
+                        if (addressError != null) {
+                            Text(addressError ?: "")
+                        } else if (!MoneroUriHandler.isMoneroAddress(address) && address.isNotEmpty()) {
+                            Text("Doesn't look like a valid Monero address")
+                        }
+                    }
+                )
+                
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Add to Favorites", fontWeight = FontWeight.Medium)
+                    Switch(
+                        checked = isFavorite,
+                        onCheckedChange = { isFavorite = it }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isEmpty()) {
+                        return@Button
+                    }
+                    
+                    if (!MoneroUriHandler.isMoneroAddress(address)) {
+                        addressError = "Invalid Monero address"
+                        return@Button
+                    }
+                    
+                    onSave(
+                        entry?.copy(
+                            name = name,
+                            address = address,
+                            notes = notes,
+                            isFavorite = isFavorite
+                        ) ?: AddressBookEntry(
+                            name = name,
+                            address = address,
+                            notes = notes,
+                            isFavorite = isFavorite
+                        )
+                    )
+                },
+                enabled = name.isNotEmpty() && MoneroUriHandler.isMoneroAddress(address),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (entry == null) "Add Contact" else "Save")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+// ============================================================================
+// ENHANCED SEND SCREEN WITH FEATURES
+// ============================================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EnhancedSendScreen(
+    walletSuite: WalletSuite,
+    dataStore: WalletDataStore,
+    unlockedBalance: Long,
+    onBack: () -> Unit = {},
+    onSendComplete: (String) -> Unit = {}
+) {
+    var recipients by remember { mutableStateOf(listOf(RecipientInput(address = "", amount = ""))) }
+    var selectedPriority by remember { mutableStateOf(dataStore.loadDefaultPriority()) }
+    var showAddressBook by remember { mutableStateOf(false) }
+    var showPriorityInfo by remember { mutableStateOf(false) }
+    var showConfirmation by remember { mutableStateOf(false) }
+    var activeRecipientIndex by remember { mutableStateOf(0) }
+    var totalAmount by remember { mutableStateOf(0.0) }
+    var estimatedFee by remember { mutableStateOf(0.0) }
+    var isSending by remember { mutableStateOf(false) }
+    val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    val snackbarHost = remember { SnackbarHostState() }
+    
+    // Calculate total amount and fee whenever recipients or priority changes
+    LaunchedEffect(recipients, selectedPriority) {
+        totalAmount = recipients.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+        estimatedFee = totalAmount * 0.002 * selectedPriority.feeMultiplier
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                // Refresh UI state when returning to this screen
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Send XMR", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                }
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHost) }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(padding),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Available", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
+                        Text(
+                            String.format("%.6f %s", unlockedXMR, stringResource(R.string.monero_symbol)), 
+                            fontSize = 24.sp, 
+                            fontWeight = FontWeight.Bold, 
+                            color = Color(0xFF4CAF50)
+                        )
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Total", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(0.7f))
+                        Text(
+                            String.format("%.6f %s", totalAmount, stringResource(R.string.monero_symbol)), 
+                            fontSize = 18.sp, 
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Fee: ${String.format("%.6f %s", estimatedFee, stringResource(R.string.monero_symbol))}", 
+                            fontSize = 12.sp, 
+                            color = MaterialTheme.colorScheme.onSurface.copy(0.5f)
+                        )
+                    }
+                }
+            }
+            
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Transaction Priority", fontWeight = FontWeight.SemiBold)
+                        IconButton(
+                            onClick = { showPriorityInfo = true },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.Info, "Priority Info")
+                        }
+                    }
+                    
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(TransactionPriority.values()) { priority ->
+                            FilterChip(
+                                selected = selectedPriority == priority,
+                                onClick = { selectedPriority = priority },
+                                label = { 
+                                    Text(
+                                        when (priority) {
+                                            TransactionPriority.LOW -> "Slow & Cheaper"
+                                            TransactionPriority.MEDIUM -> "Normal"
+                                            TransactionPriority.HIGH -> "Fast & Standard"
+                                            TransactionPriority.URGENT -> "Urgent & Fastest"
+                                        }
+                                    ) 
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = Color.White
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    borderColor = MaterialTheme.colorScheme.outline,
+                                    selectedBorderColor = MaterialTheme.colorScheme.primary,
+                                    enabled = true,
+                                    selected = selectedPriority == priority
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(recipients.size) { index ->
+                    RecipientCard(
+                        recipient = recipients[index],
+                        index = index,
+                        onAddressChange = { newAddress ->
+                            recipients = recipients.mapIndexed { i, r ->
+                                if (i == index) r.copy(address = newAddress) else r
+                            }
+                        },
+                        onAmountChange = { newAmount ->
+                            recipients = recipients.mapIndexed { i, r ->
+                                if (i == index) r.copy(amount = newAmount) else r
+                            }
+                        },
+                        onRemove = {
+                            if (recipients.size > 1) {
+                                recipients = recipients.filterIndexed { i, _ -> i != index }
+                            }
+                        },
+                        onPaste = {
+                            clipboardManager.getText()?.text?.let { text ->
+                                recipients = recipients.mapIndexed { i, r ->
+                                    if (i == index) r.copy(address = text) else r
+                                }
+                            }
+                        },
+                        onSelectFromAddressBook = {
+                            activeRecipientIndex = index
+                            showAddressBook = true
+                        },
+                        onUseMax = {
+                            recipients = recipients.mapIndexed { i, r ->
+                                if (i == index) r.copy(amount = unlockedXMR.toString()) else r
+                            }
+                        }
+                    )
+                }
+                
+                // Add button to add another recipient
+                item {
+                    Button(
+                        onClick = {
+                            recipients = recipients + RecipientInput(address = "", amount = "")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add Another Recipient")
+                    }
+                }
+            }
+            
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = {
+                        val isValid = recipients.all { r ->
+                            r.address.isNotEmpty() && 
+                            r.amount.isNotEmpty() && 
+                            r.amount.toDoubleOrNull() != null &&
+                            r.amount.toDouble() > 0
+                        }
+                        
+                        if (!isValid) {
+                            scope.launch {
+                                snackbarHost.showSnackbar("Please fill in all recipient fields")
+                            }
+                            return@Button
+                        }
+                        
+                        if (totalAmount + estimatedFee > unlockedXMR) {
+                            scope.launch {
+                                snackbarHost.showSnackbar("Insufficient balance for this transaction")
+                            }
+                            return@Button
+                        }
+                        
+                        showConfirmation = true
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    enabled = !isSending && recipients.any { it.address.isNotEmpty() && it.amount.isNotEmpty() }
+                ) {
+                    if (isSending) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 3.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Processing...")
+                    } else {
+                        Icon(Icons.Default.Send, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Review Transaction")
+                    }
+                }
+            }
+        }
+    }
+    
+    if (showAddressBook) {
+        Dialog(
+            onDismissRequest = { showAddressBook = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 600.dp),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                AddressBookScreen(
+                    dataStore = dataStore,
+                    onSelectAddress = { address ->
+                        recipients = recipients.mapIndexed { i, r ->
+                            if (i == activeRecipientIndex) r.copy(address = address) else r
+                        }
+                        showAddressBook = false
+                    },
+                    onClose = { showAddressBook = false }
+                )
+            }
+        }
+    }
+    
+    if (showPriorityInfo) {
+        AlertDialog(
+            onDismissRequest = { showPriorityInfo = false },
+            title = { Text("Transaction Priority", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TransactionPriority.values().forEach { priority ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        when (priority) {
+                                            TransactionPriority.LOW -> "Slow & Cheaper"
+                                            TransactionPriority.MEDIUM -> "Normal"
+                                            TransactionPriority.HIGH -> "Fast & Standard"
+                                            TransactionPriority.URGENT -> "Urgent & Fastest"
+                                        }, 
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        String.format("%.0f%%", priority.feeMultiplier * 100), 
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    when (priority) {
+                                        TransactionPriority.LOW -> "Lowest fees, may take hours"
+                                        TransactionPriority.MEDIUM -> "Standard fees, confirmed in minutes"
+                                        TransactionPriority.HIGH -> "Faster confirmation, higher fee"
+                                        TransactionPriority.URGENT -> "Highest priority for fastest confirmation"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showPriorityInfo = false }) {
+                    Text("Got it")
+                }
+            }
+        )
+    }
+    
+    if (showConfirmation) {
+        TransactionConfirmationDialog(
+            recipients = recipients,
+            totalAmount = totalAmount,
+            estimatedFee = estimatedFee,
+            priority = selectedPriority,
+            isProcessing = isSending,
+            onConfirm = {
+                scope.launch {
+                    isSending = true
+                    // Simulate sending process
+                    delay(1500)
+                    isSending = false
+                    showConfirmation = false
+                    onSendComplete("Transaction sent successfully!")
+                }
+            },
+            onDismiss = { if (!isSending) showConfirmation = false }
+        )
+    }
+}
+
+@Composable
+fun RecipientCard(
+    recipient: RecipientInput,
+    index: Int,
+    onAddressChange: (String) -> Unit,
+    onAmountChange: (String) -> Unit,
+    onRemove: () -> Unit,
+    onPaste: () -> Unit,
+    onSelectFromAddressBook: () -> Unit,
+    onUseMax: () -> Unit
+) {
+    var addressError by remember { mutableStateOf<String?>(null) }
+    var amountError by remember { mutableStateOf<String?>(null) }
+    
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Recipient ${index + 1}", fontWeight = FontWeight.SemiBold)
+                if (index > 0) {
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            "Remove",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+            
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Address", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IconButton(
+                            onClick = onPaste,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.ContentPaste, "Paste")
+                        }
+                        IconButton(
+                            onClick = onSelectFromAddressBook,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.ContactPage, "Select from Address Book")
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = recipient.address,
+                    onValueChange = {
+                        onAddressChange(it)
+                        addressError = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = addressError != null,
+                    supportingText = { addressError?.let { Text(it) } },
+                    maxLines = 2,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+            
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Amount (XMR)", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    TextButton(onClick = onUseMax) {
+                        Text("MAX")
+                    }
+                }
+                OutlinedTextField(
+                    value = recipient.amount,
+                    onValueChange = {
+                        onAmountChange(it)
+                        amountError = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = amountError != null,
+                    supportingText = { amountError?.let { Text(it) } },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    prefix = { Text(stringResource(R.string.monero_symbol) + " ") }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TransactionConfirmationDialog(
+    recipients: List<RecipientInput>,
+    totalAmount: Double,
+    estimatedFee: Double,
+    priority: TransactionPriority,
+    isProcessing: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isProcessing) onDismiss() },
+        title = { Text("Confirm Transaction", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Total Amount", fontWeight = FontWeight.Medium)
+                            Text(
+                                String.format("%.6f %s", totalAmount, stringResource(R.string.monero_symbol)), 
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Network Fee", fontWeight = FontWeight.Medium)
+                            Text(
+                                String.format("%.6f %s", estimatedFee, stringResource(R.string.monero_symbol)), 
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Divider()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Total to Send", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                String.format("%.6f %s", totalAmount + estimatedFee, stringResource(R.string.monero_symbol)), 
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Priority", fontWeight = FontWeight.Medium)
+                    AssistChip(
+                        onClick = {},
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        ),
+                        label = { 
+                            Text(
+                                when (priority) {
+                                    TransactionPriority.LOW -> "Slow & Cheaper"
+                                    TransactionPriority.MEDIUM -> "Normal"
+                                    TransactionPriority.HIGH -> "Fast & Standard"
+                                    TransactionPriority.URGENT -> "Urgent & Fastest"
+                                }
+                            ) 
+                        }
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Recipients: ${recipients.size}", 
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(Icons.Default.Warning, null, tint = Color(0xFFFF9800))
+                    Text(
+                        "Monero transactions are irreversible. Double-check all details before confirming.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isProcessing
+            ) {
+                if (isProcessing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Processing...")
+                } else {
+                    Icon(Icons.Default.Send, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Confirm Send")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isProcessing
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+// ============================================================================
+// SUBADDRESS MANAGER
+// ============================================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SubaddressScreen(
+    walletSuite: WalletSuite,
+    dataStore: WalletDataStore,
+    onBack: () -> Unit = {}
+) {
+    var subaddresses by remember { mutableStateOf(dataStore.loadSubaddresses()) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var selectedSubaddress by remember { mutableStateOf<Subaddress?>(null) }
+    var showDetailsDialog by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    val snackbarHost = remember { SnackbarHostState() }
+    
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Subaddresses", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showCreateDialog = true }) {
+                        Icon(Icons.Default.Add, "Create Subaddress")
+                    }
+                }
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHost) }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(padding),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3).copy(0.1f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFF2196F3)
+                    )
+                    Text(
+                        "Subaddresses improve privacy by generating unique addresses that forward to your main wallet.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+            }
+            
+            if (subaddresses.isEmpty()) {
+                EmptyState(
+                    icon = Icons.Default.AddLocation,
+                    title = "No Subaddresses",
+                    message = "Create your first subaddress to improve privacy"
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(subaddresses.sortedByDescending { it.creationTime }) { sub ->
+                        SubaddressCard(
+                            subaddress = sub,
+                            onCopy = {
+                                clipboardManager.setText(AnnotatedString(sub.address))
+                                scope.launch {
+                                    snackbarHost.showSnackbar("Address copied")
+                                }
+                            },
+                            onClick = {
+                                selectedSubaddress = sub
+                                showDetailsDialog = true
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+    
+    if (showCreateDialog) {
+        CreateSubaddressDialog(
+            existingLabels = subaddresses.map { it.label },
+            onConfirm = { label ->
+                scope.launch {
+                    val newSub = Subaddress(
+                        index = subaddresses.size + 1,
+                        address = generateMockSubaddress(),
+                        label = label
+                    )
+                    
+                    subaddresses = subaddresses + newSub
+                    dataStore.saveSubaddresses(subaddresses)
+                    
+                    snackbarHost.showSnackbar("Subaddress '$label' created")
+                    showCreateDialog = false
+                }
+            },
+            onDismiss = { showCreateDialog = false }
+        )
+    }
+    
+    selectedSubaddress?.let { sub ->
+        if (showDetailsDialog) {
+            SubaddressDetailsDialog(
+                subaddress = sub,
+                onClose = {
+                    selectedSubaddress = null
+                    showDetailsDialog = false
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun SubaddressCard(
+    subaddress: Subaddress,
+    onCopy: () -> Unit,
+    onClick: () -> Unit
+) {
+    var copied by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2000)
+            copied = false
+        }
+    }
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(subaddress.label, fontWeight = FontWeight.SemiBold)
+                    if (subaddress.used) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF4CAF50).copy(alpha = 0.2f)
+                        ) {
+                            Text(
+                                "Used",
+                                fontSize = 10.sp,
+                                color = Color(0xFF4CAF50),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "Index: ${subaddress.index}",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+                Text(
+                    SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                        .format(Date(subaddress.creationTime)),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+            
+            IconButton(
+                onClick = {
+                    onCopy()
+                    copied = true
+                }
+            ) {
+                Icon(
+                    if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                    contentDescription = "Copy",
+                    tint = if (copied) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateSubaddressDialog(
+    existingLabels: List<String>,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var label by remember { mutableStateOf("") }
+    var labelError by remember { mutableStateOf<String?>(null) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Create New Subaddress", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "Subaddresses improve privacy by generating unique addresses that forward to your main wallet.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = {
+                        label = it
+                        labelError = null
+                    },
+                    label = { Text("Subaddress Label") },
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = labelError != null,
+                    supportingText = { labelError?.let { Text(it) } },
+                    placeholder = { Text("e.g., Online Shopping, Donations") }
+                )
+                
+                if (existingLabels.contains(label)) {
+                    Text(
+                        "Label already exists. Please choose a unique label.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (label.isEmpty()) {
+                        labelError = "Label is required"
+                        return@Button
+                    }
+                    if (existingLabels.contains(label)) {
+                        labelError = "Label already exists"
+                        return@Button
+                    }
+                    onConfirm(label)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = label.isNotEmpty() && !existingLabels.contains(label)
+            ) {
+                Text("Create Subaddress")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+fun SubaddressDetailsDialog(
+    subaddress: Subaddress,
+    onClose: () -> Unit
+) {
+    val clipboardManager = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    val qrBitmap = remember(subaddress.address) {
+        generateQRCode(subaddress.address, 256)
+    }
+    
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2000)
+            copied = false
+        }
+    }
+    
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { 
+            Text(
+                subaddress.label,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            ) 
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (qrBitmap != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White,
+                        modifier = Modifier.size(200.dp)
+                    ) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "Subaddress QR Code",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(8.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp)
+                            .background(Color.White, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Address", fontWeight = FontWeight.SemiBold)
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            subaddress.address,
+                            fontSize = 10.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Index", fontWeight = FontWeight.Medium)
+                        Text(subaddress.index.toString())
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Created", fontWeight = FontWeight.Medium)
+                        Text(
+                            SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                                .format(Date(subaddress.creationTime))
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Status", fontWeight = FontWeight.Medium)
+                        Text(
+                            if (subaddress.used) "Used" else "Unused",
+                            color = if (subaddress.used) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(subaddress.address))
+                    copied = true
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                    null
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(if (copied) "Copied!" else "Copy")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onClose,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+// ============================================================================
+// PAYMENT REQUEST GENERATOR
+// ============================================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PaymentRequestScreen(
+    walletAddress: String,
+    onBack: () -> Unit = {}
+) {
+    var amount by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var recipientName by remember { mutableStateOf("") }
+    var generatedUri by remember { mutableStateOf<String?>(null) }
+    var showUriDialog by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    val snackbarHost = remember { SnackbarHostState() }
+    
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Payment Request", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                }
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHost) }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(padding),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3).copy(0.1f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.QrCode,
+                        contentDescription = null,
+                        tint = Color(0xFF2196F3)
+                    )
+                    Text(
+                        "Generate a payment request QR code that includes amount and description",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+            }
+            
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Your Address", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            walletAddress.take(20) + "..." + walletAddress.takeLast(20),
+                            fontSize = 12.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+                
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it },
+                    label = { Text("Amount (XMR)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Enter amount (optional)") },
+                    prefix = { Text(stringResource(R.string.monero_symbol) + " ") },
+                    shape = RoundedCornerShape(12.dp)
+                )
+                
+                OutlinedTextField(
+                    value = recipientName,
+                    onValueChange = { recipientName = it },
+                    label = { Text("Recipient Name (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("e.g., John's Cafe") },
+                    shape = RoundedCornerShape(12.dp)
+                )
+                
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (optional)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3,
+                    placeholder = { Text("e.g., Coffee payment") },
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.weight(1f))
+            
+            Button(
+                onClick = {
+                    val request = PaymentRequest(
+                        address = walletAddress,
+                        amount = if (amount.isNotEmpty()) amount else null,
+                        recipientName = if (recipientName.isNotEmpty()) recipientName else null,
+                        txDescription = if (description.isNotEmpty()) description else null
+                    )
+                    
+                    generatedUri = MoneroUriHandler.createUri(request)
+                    showUriDialog = true
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(56.dp),
+                enabled = amount.isEmpty() || amount.toDoubleOrNull() != null
+            ) {
+                Icon(Icons.Default.QrCode, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Generate Payment Request")
+            }
+        }
+    }
+    
+    generatedUri?.let { uri ->
+        if (showUriDialog) {
+            PaymentRequestDialog(
+                uri = uri,
+                onCopy = {
+                    clipboardManager.setText(AnnotatedString(uri))
+                    scope.launch {
+                        snackbarHost.showSnackbar("Payment request copied")
+                    }
+                },
+                onShare = {
+                    scope.launch {
+                        snackbarHost.showSnackbar("Share not implemented in this version")
+                    }
+                },
+                onClose = { showUriDialog = false }
+            )
+        }
+    }
+}
+
+@Composable
+fun PaymentRequestDialog(
+    uri: String,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onClose: () -> Unit
+) {
+    var copied by remember { mutableStateOf(false) }
+    val qrBitmap = remember(uri) {
+        generateQRCode(uri, 300)
+    }
+    
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2000)
+            copied = false
+        }
+    }
+    
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Payment Request", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (qrBitmap != null) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.White,
+                        modifier = Modifier.size(250.dp)
+                    ) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "Payment Request QR Code",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(12.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(250.dp)
+                            .background(Color.White, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+                
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        uri,
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier.padding(12.dp),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        onCopy()
+                        copied = true
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        null
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (copied) "Copied!" else "Copy")
+                }
+                
+                Button(
+                    onClick = onShare,
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                ) {
+                    Icon(Icons.Default.Share, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Share")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onClose,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Close")
             }
         }
     )
@@ -2873,3 +5153,53 @@ data class Transaction(
     val confirmed: Boolean,
     val txId: String = ""
 )
+
+// ============================================================================
+// UTILITY FUNCTIONS & UI COMPONENTS
+// ============================================================================
+
+@Composable
+fun EmptyState(
+    icon: ImageVector,
+    title: String,
+    message: String
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
+            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = message,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+fun generateMockSubaddress(): String {
+    return "8" + UUID.randomUUID().toString().replace("-", "").take(94)
+}
