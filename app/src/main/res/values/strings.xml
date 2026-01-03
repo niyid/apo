@@ -936,4 +936,41 @@
     <!-- Navigation Bar Strings -->
     <string name="nav_enhanced_send_short">Enhanced</string>
     
+<string name="enter_amount_optional">Enter amount (optional)</string>
+
+    <string name="permissionhandler">PermissionHandler</string>
+    <string name="requesting_android_13_storage">Requesting Android 13+ storage permissions</string>
+    <string name="requesting_android_11_storage">Requesting Android 11+ storage permissions</string>
+    <string name="manage_external_storage_not_granted_some">MANAGE_EXTERNAL_STORAGE not granted - some features may be limited</string>
+    <string name="requesting_legacy_storage_permissions">Requesting legacy storage permissions</string>
+    <string name="manage_external_storage_granted_full_access">MANAGE_EXTERNAL_STORAGE granted - full access available</string>
+    <string name="storage_permissions_not_granted">Storage permissions not granted, requesting...</string>
+    <string name="storage_permissions_granted_wallet">Storage permissions granted - wallet can proceed</string>
+    <string name="storage_permissions_denied_showing">Storage permissions denied - showing rationale</string>
+    <string name="permission_rationale_shown">Permission rationale shown</string>
+
+    <string name="error">Error</string>
+    <string name="failed">Failed</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+    <string name="delete">Delete</string>
+    <string name="add">Add</string>
+    <string name="close">Close</string>
+    <string name="back">Back</string>
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="done">Done</string>
+    <string name="search">Search</string>
+
+    <string name="storage_permission_android_13">Requesting Android 13+ storage permissions</string>
+    <string name="storage_permission_android_11">Requesting Android 11+ storage permissions</string>
+    <string name="storage_permission_legacy">Requesting legacy storage permissions</string>
+    <string name="storage_permission_manage_external_denied">MANAGE_EXTERNAL_STORAGE not granted - some features may be limited</string>
+    <string name="storage_permission_manage_external_granted">MANAGE_EXTERNAL_STORAGE granted - full access available</string>
+    <string name="permission_handler">PermissionHandler</string>
+    <string name="storage_permission_requesting">Storage permissions not granted, requesting...</string>
+    <string name="storage_permission_granted_proceed">Storage permissions granted - wallet can proceed</string>
+    <string name="storage_permission_denied_rationale">Storage permissions denied - showing rationale</string>
 </resources>
