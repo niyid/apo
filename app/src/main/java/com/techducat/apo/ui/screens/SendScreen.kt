@@ -19,10 +19,6 @@ import androidx.compose.ui.unit.sp
 import com.techducat.apo.WalletSuite
 import com.techducat.apo.R
 
-// ============================================================================
-// SENDSCREEN
-// ============================================================================
-
 @Composable
 fun SendScreen(
     walletSuite: WalletSuite,
@@ -41,6 +37,11 @@ fun SendScreen(
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    
+    // Extract string resources at composable level
+    val qrScannerNotImplementedMsg = stringResource(R.string.send_qr_scanner_not_implemented)
+    val creatingTransactionText = stringResource(R.string.creating_transaction)
+    val actionSearchTransactionText = stringResource(R.string.action_search_transaction)
     
     LaunchedEffect(successMessage, errorMessage) {
         successMessage?.let {
@@ -65,7 +66,7 @@ fun SendScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Text("Send XMR", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.send_send_xmr), fontSize = 28.sp, fontWeight = FontWeight.Bold)
             }
             
             item {
@@ -97,14 +98,14 @@ fun SendScreen(
                 OutlinedTextField(
                     value = recipient,
                     onValueChange = { recipient = it },
-                    label = { stringResource(R.string.send_recipient_address) },
+                    label = { Text(stringResource(R.string.send_recipient_address)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     trailingIcon = {
                         IconButton(onClick = { 
                             scope.launch {
                                 snackbarHost.showSnackbar(
-                                    "QR scanner not implemented in this version",
+                                    qrScannerNotImplementedMsg,
                                     duration = SnackbarDuration.Short
                                 )
                             }
@@ -120,7 +121,7 @@ fun SendScreen(
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
-                    label = { stringResource(R.string.amount) },
+                    label = { Text(stringResource(R.string.amount)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     trailingIcon = {
@@ -145,7 +146,7 @@ fun SendScreen(
                     if (isSending) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 3.dp)
                         Spacer(Modifier.width(8.dp))
-                        stringResource(R.string.creating_transaction)
+                        Text(creatingTransactionText)
                     } else {
                         Icon(Icons.Default.Send, null)
                         Spacer(Modifier.width(8.dp))
@@ -161,7 +162,7 @@ fun SendScreen(
                 ) {
                     Icon(Icons.Default.Search, null)
                     Spacer(Modifier.width(8.dp))
-                    stringResource(R.string.action_search_transaction)
+                    Text(actionSearchTransactionText)
                 }
             }
         }

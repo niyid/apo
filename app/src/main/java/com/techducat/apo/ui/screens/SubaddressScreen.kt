@@ -107,7 +107,7 @@ fun SubaddressScreen(
                         tint = Color(0xFF2196F3)
                     )
                     Text(
-                        text = "Subaddresses improve privacy by generating unique addresses that forward to your main wallet.",
+                        text = stringResource(R.string.subaddress_subaddresses_improve_privacy_by),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
@@ -118,7 +118,7 @@ fun SubaddressScreen(
                 EmptyState(
                     icon = Icons.Default.AddLocation,
                     title = stringResource(R.string.no_subaddresses),
-                    message = "Create your first subaddress to improve privacy"
+                    message = stringResource(R.string.subaddress_create_your_first_subaddress)
                 )
             } else {
                 LazyColumn(

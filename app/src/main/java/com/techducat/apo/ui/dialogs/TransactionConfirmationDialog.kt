@@ -116,10 +116,10 @@ fun TransactionConfirmationDialog(
                         label = { 
                             Text(
                                 when (priority) {
-                                    TransactionPriority.LOW -> "Slow & Cheaper"
+                                    TransactionPriority.LOW -> stringResource(R.string.transaction_confirmation_slow_cheaper)
                                     TransactionPriority.MEDIUM -> normalText
-                                    TransactionPriority.HIGH -> "Fast & Standard"
-                                    TransactionPriority.URGENT -> "Urgent & Fastest"
+                                    TransactionPriority.HIGH -> stringResource(R.string.transaction_confirmation_fast_standard)
+                                    TransactionPriority.URGENT -> stringResource(R.string.transaction_confirmation_urgent_fastest)
                                 }
                             ) 
                         }
@@ -143,7 +143,7 @@ fun TransactionConfirmationDialog(
                 ) {
                     Icon(Icons.Default.Warning, null, tint = Color(0xFFFF9800))
                     Text(
-                        "Monero transactions are irreversible. Double-check all details before confirming.",
+                        stringResource(R.string.transaction_confirmation_monero_transactions_are_irreversible),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
@@ -163,7 +163,7 @@ fun TransactionConfirmationDialog(
                         strokeWidth = 2.dp
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text("Processing...")
+                    Text(stringResource(R.string.processing))
                 } else {
                     Icon(Icons.Default.Send, null)
                     Spacer(Modifier.width(8.dp))

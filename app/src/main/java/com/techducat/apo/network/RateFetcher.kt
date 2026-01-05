@@ -6,6 +6,7 @@ import org.json.JSONObject
 import timber.log.Timber
 import java.net.HttpURLConnection
 import java.net.URL
+import androidx.compose.ui.res.stringResource
 
 suspend fun fetchXMRUSDRate(): Result<Double> = withContext(Dispatchers.IO) {
     var connection: HttpURLConnection? = null

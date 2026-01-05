@@ -132,7 +132,7 @@ fun SubaddressDetailsDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Status", fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.settings_status), fontWeight = FontWeight.Medium)
                         Text(
                             if (subaddress.used) stringResource(R.string.used) else stringResource(R.string.unused),
                             color = if (subaddress.used) Color(0xFF4CAF50) else MaterialTheme.colorScheme.primary

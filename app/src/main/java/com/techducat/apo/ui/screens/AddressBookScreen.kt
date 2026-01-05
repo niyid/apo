@@ -94,9 +94,9 @@ fun AddressBookScreen(
             if (filteredEntries.isEmpty()) {
                 EmptyState(
                     icon = Icons.Default.ContactPage,
-                    title = if (searchQuery.isNotEmpty()) "No matching contacts" else stringResource(R.string.no_contacts),
+                    title = if (searchQuery.isNotEmpty()) stringResource(R.string.address_book_no_matching_contacts) else stringResource(R.string.no_contacts),
                     message = if (searchQuery.isNotEmpty()) 
-                        "Try a different search term"
+                        stringResource(R.string.address_book_try_a_different_search)
                     else 
                         stringResource(R.string.add_first_contact)
                 )

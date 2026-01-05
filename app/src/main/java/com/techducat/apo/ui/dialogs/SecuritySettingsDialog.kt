@@ -67,23 +67,23 @@ fun SecuritySettingsDialog(onDismiss: () -> Unit) {
                     }
                 } else {
                     SecurityOption(
-                        title = "Biometric Authentication",
-                        subtitle = "Use fingerprint or face recognition to access wallet",
+                        title = stringResource(R.string.security_biometric_title),
+                        subtitle = stringResource(R.string.security_settings_use_fingerprint_or_face),
                         checked = biometricEnabled,
                         onCheckedChange = { biometricEnabled = it },
                         enabled = !isSaving
                     )
                     
                     SecurityOption(
-                        title = "PIN Protection",
-                        subtitle = "Require PIN code for sensitive operations",
+                        title = stringResource(R.string.security_settings_pin_protection),
+                        subtitle = stringResource(R.string.security_settings_require_pin_code_for),
                         checked = pinEnabled,
                         onCheckedChange = { pinEnabled = it },
                         enabled = !isSaving
                     )
                     
                     Text(
-                        text = "Note: Full implementation requires additional security modules",
+                        text = stringResource(R.string.security_settings_note_full_implementation_requires),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         fontStyle = FontStyle.Italic

@@ -131,7 +131,7 @@ class ChangeNowSwapService {
                         json.getString("payinAddress"), 
                         json.getString("payoutAddress"), 
                         json.getString("fromCurrency"), 
-                        json.getString("toCurrency")
+                        json.getString("fromCurrency")
                     )
                 )
             } else {

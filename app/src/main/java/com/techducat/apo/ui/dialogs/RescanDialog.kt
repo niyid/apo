@@ -24,7 +24,7 @@ fun RescanDialog(
             ) 
         },
         text = { 
-            Text(text = "This will rescan the entire blockchain to fix balance issues. It may take several minutes.") 
+            Text(text = stringResource(R.string.settings_this_will_rescan_the)) 
         },
         confirmButton = {
             Button(

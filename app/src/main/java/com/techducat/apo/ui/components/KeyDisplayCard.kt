@@ -104,7 +104,7 @@ fun KeyDisplayCard(
                         } else {
                             Icons.Default.ContentCopy
                         },
-                        contentDescription = "Copy key",
+                        contentDescription = stringResource(R.string.key_display_copy_key),
                         tint = if (showCopiedFeedback || isCopied) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -126,7 +126,7 @@ fun KeyDisplayCard(
                     )
                 ) {
                     Text(
-                        text = if (showFullKey) "Show Less" else "Show Full Key",
+                        text = if (showFullKey) stringResource(R.string.key_display_show_less) else stringResource(R.string.key_display_show_full_key),
                         fontSize = 12.sp
                     )
                 }

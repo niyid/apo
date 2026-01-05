@@ -32,11 +32,12 @@ fun AddEditAddressDialog(
     var isFavorite by remember { mutableStateOf(entry?.isFavorite ?: false) }
     var addressError by remember { mutableStateOf<String?>(null) }
     
+    val invalidAddressMsg = stringResource(R.string.add_edit_address_invalid_monero_address)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { 
             Text(
-                if (entry == null) stringResource(R.string.add_contact) else "Edit Contact",
+                if (entry == null) stringResource(R.string.add_contact) else stringResource(R.string.edit_contact),
                 fontWeight = FontWeight.Bold
             ) 
         },
@@ -106,7 +107,7 @@ fun AddEditAddressDialog(
                     }
                     
                     if (!MoneroUriHandler.isMoneroAddress(address)) {
-                        addressError = "Invalid Monero address"
+                        addressError = invalidAddressMsg
                         return@Button
                     }
                     

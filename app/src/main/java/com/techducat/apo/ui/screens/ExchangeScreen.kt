@@ -55,7 +55,7 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "API key not configured. Please check your build configuration.",
+                    text = stringResource(R.string.exchange_api_key_not_configured),
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
@@ -222,7 +222,7 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                         modifier = Modifier.padding(16.dp), 
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("To", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.exchange_to), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Row(
                             modifier = Modifier.fillMaxWidth(), 
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -264,12 +264,7 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                     value = toAddress, 
                     onValueChange = { toAddress = it }, 
                     label = { 
-                        Text(
-                            stringResource(
-                                id = R.string.exchange_recipient_address,
-                                toCurrency.uppercase()
-                            )
-                        ) 
+                        Text(stringResource(R.string.exchange_to) + " ${toCurrency.uppercase()} " + stringResource(R.string.send_recipient_address))
                     },
                     modifier = Modifier.fillMaxWidth(), 
                     shape = RoundedCornerShape(16.dp), 
@@ -318,7 +313,7 @@ fun ExchangeScreen(walletSuite: WalletSuite, walletAddress: String, unlockedBala
                     } else {
                         Icon(Icons.Default.SwapHoriz, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Start Exchange", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.exchange_start_exchange), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

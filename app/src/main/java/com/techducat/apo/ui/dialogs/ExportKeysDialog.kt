@@ -44,7 +44,7 @@ fun ExportKeysDialog(
         onDismissRequest = onDismiss,
         title = { 
             Text(
-                text = "Export Wallet Keys",
+                text = stringResource(R.string.export_keys_export_wallet_keys),
                 fontWeight = FontWeight.Bold
             ) 
         },
@@ -61,7 +61,7 @@ fun ExportKeysDialog(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "Security Warning!",
+                        text = stringResource(R.string.seed_phrase_security_warning),
                         color = Color(0xFFFF9800),
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
@@ -69,7 +69,7 @@ fun ExportKeysDialog(
                 }
                 
                 Text(
-                    text = "Anyone with these keys can access your funds. Store them securely and never share them.",
+                    text = stringResource(R.string.export_keys_anyone_with_these_keys),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
@@ -192,7 +192,7 @@ fun KeyDisplayCard(
                         } else {
                             Icons.Default.ContentCopy
                         },
-                        contentDescription = "Copy key",
+                        contentDescription = stringResource(R.string.key_display_copy_key),
                         tint = if (showCopiedFeedback || isCopied) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -214,7 +214,7 @@ fun KeyDisplayCard(
                     )
                 ) {
                     Text(
-                        text = if (showFullKey) "Show Less" else "Show Full Key",
+                        text = if (showFullKey) stringResource(R.string.key_display_show_less) else stringResource(R.string.key_display_show_full_key),
                         fontSize = 12.sp
                     )
                 }

@@ -69,14 +69,14 @@ fun SeedPhraseDialog(
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "Security Warning!",
+                        text = stringResource(R.string.seed_phrase_security_warning),
                         color = Color(0xFFFF9800),
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
                     )
                 }
                 Text(
-                    text = "Anyone with this seed phrase can access your funds. Store it securely and never share it.",
+                    text = stringResource(R.string.seed_phrase_anyone_with_this_seed),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )

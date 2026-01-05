@@ -242,7 +242,6 @@ suspend fun fetchXMRUSDRate(): Result<Double> = withContext(Dispatchers.IO) {
         connection.requestMethod = "GET"
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
-        // Use hardcoded string instead of stringResource()
         connection.setRequestProperty("Accept", "application/json")
         
         val responseCode = connection.responseCode

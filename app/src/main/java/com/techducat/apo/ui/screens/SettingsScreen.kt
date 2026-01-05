@@ -48,6 +48,9 @@ fun SettingsScreen(
     
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    
+    // Extract string resource at composable level
+    val syncStartedMsg = stringResource(R.string.settings_sync_started)
 
     LaunchedEffect(Unit) {
         walletSuite.setRescanBalanceCallback(object : WalletSuite.RescanBalanceCallback {
@@ -89,14 +92,14 @@ fun SettingsScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Wallet Info", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.settings_wallet_info_1), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Status",
+                                text = stringResource(R.string.settings_status),
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
                             Text(
@@ -138,7 +141,7 @@ fun SettingsScreen(
                         walletSuite.triggerImmediateSync()
                         scope.launch {
                             snackbarHostState.showSnackbar(
-                                message = "Sync started",
+                                message = syncStartedMsg,
                                 duration = SnackbarDuration.Short
                             )
                         }
@@ -187,7 +190,7 @@ fun SettingsScreen(
             item {
                 SettingsCard(
                     title = stringResource(R.string.settings_node_settings),
-                    subtitle = stringResource(R.string.settings_current_node, walletSuite.daemonAddress, walletSuite.daemonPort),
+                    subtitle = "Node: ${walletSuite.daemonAddress}:${walletSuite.daemonPort}",
                     icon = Icons.Default.Cloud,
                     onClick = { showNodeDialog = true }
                 )

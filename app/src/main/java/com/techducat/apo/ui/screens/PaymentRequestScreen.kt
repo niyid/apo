@@ -81,7 +81,7 @@ fun PaymentRequestScreen(
                         tint = Color(0xFF2196F3)
                     )
                     Text(
-                        "Generate a payment request QR code that includes amount and description",
+                        stringResource(R.string.payment_request_generate_a_payment_request),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )

@@ -161,8 +161,8 @@ fun HistoryScreen(walletSuite: WalletSuite) {
                 item {
                     EmptyState(
                         icon = Icons.Default.ReceiptLong,
-                        title = "No transactions yet",
-                        message = "Your transaction history will appear here"
+                        title = stringResource(R.string.empty_transactions),
+                        message = stringResource(R.string.history_your_transaction_history_will)
                     )
                 }
             }

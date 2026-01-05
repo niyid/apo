@@ -50,7 +50,7 @@ fun NodeConfigDialog(
                     )
                 }
                 Text(
-                    text = "To change the node, modify the wallet configuration.",
+                    text = stringResource(R.string.node_config_to_change_the_node),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )

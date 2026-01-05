@@ -40,6 +40,7 @@ fun TransactionCard(transaction: Transaction) {
     val pendingText = stringResource(R.string.history_pending)
     val txSearchIdText = stringResource(R.string.tx_search_id)
     val actionCopyText = stringResource(R.string.action_copy)
+    val transactionElseText = stringResource(R.string.transaction_else)
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -101,7 +102,7 @@ fun TransactionCard(transaction: Transaction) {
                 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${if (transaction.type == receivedText) "+" else "-"}${transaction.amount}",
+                        text = "${if (transaction.type == receivedText) "+" else transactionElseText}${transaction.amount}",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (transaction.type == receivedText) 

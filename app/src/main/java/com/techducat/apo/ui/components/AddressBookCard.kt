@@ -114,7 +114,7 @@ fun AddressBookCard(
                     ) {
                         Icon(
                             if (entry.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                            contentDescription = if (entry.isFavorite) "Remove Favorite" else stringResource(R.string.add_to_favorites),
+                            contentDescription = if (entry.isFavorite) stringResource(R.string.address_book_remove_favorite) else stringResource(R.string.add_to_favorites),
                             tint = if (entry.isFavorite) Color(0xFFFFD700) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }

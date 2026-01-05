@@ -364,7 +364,8 @@ fun RecipientCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(stringResource(R.string.recipient_format, index + 1))
+                // Changed from stringResource(R.string.recipient_format) to simple string concatenation
+                Text("${stringResource(R.string.recipient)} ${index + 1}")
                 
                 if (index > 0) {
                     IconButton(onClick = onRemove) {

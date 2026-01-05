@@ -9,8 +9,8 @@ object MoneroUriHandler {
         return try {
             if (!uri.startsWith("monero:")) return null
             
-            val cleanUri = if (uri.startsWith("monero://")) {
-                uri.replaceFirst("monero://", "monero:")
+            val cleanUri = if (uri.startsWith("monero:")) {
+                uri.replaceFirst("monero:", "monero:")
             } else {
                 uri
             }
