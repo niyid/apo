@@ -36,3 +36,7 @@ A native Android Monero wallet application built with Kotlin and Jetpack Compose
 ## License
 
 MIT
+
+- Monero:  88Ae5wwozjnjmhXRN987HXUgNZ8J8MEKBZf8gsxsMHj39HPHjCoirxZFy1UWuNSE36i3AB8ppqMAnNHiskbaut41AqGskaw
+
+<img src="./monero_wallet.png" alt="Monero Wallet" width="300" height="300">
