@@ -1,0 +1,41 @@
+Àpò is a native Monero wallet application for Android built with modern technologies including Kotlin and Jetpack Compose, offering a secure and user-friendly way to manage your XMR cryptocurrency.
+
+<b>Key Features</b>
+
+• Create new Monero wallets or restore existing ones using seed phrases
+• Send and receive XMR transactions with ease
+• Real-time blockchain synchronization
+• Complete transaction history with powerful search functionality
+• Blockchain rescan capability for wallet recovery and troubleshooting
+• QR code generation and scanning for seamless address sharing
+• Biometric authentication (fingerprint/face unlock) for enhanced security
+• Modern, intuitive Material Design 3 interface
+• Multi-language support
+
+<b>Privacy & Security</b>
+
+Àpò prioritizes your privacy and security:
+
+• Native Monero C++ libraries ensure protocol compatibility
+• All wallet data encrypted and stored locally on your device
+• No analytics or tracking - your financial data stays private
+• Biometric authentication protects wallet access
+• Open source - auditable by anyone
+
+<b>Technology</b>
+
+Built with cutting-edge Android development tools:
+
+• Kotlin programming language for reliability
+• Jetpack Compose for smooth, modern UI
+• MVVM architecture with coroutines for responsive performance
+• Room database for efficient local data management
+• Native Monero libraries via JNI for secure wallet operations
+
+<b>Important Security Note</b>
+
+Always backup your seed phrase securely. Never share your seed phrase or private keys with anyone. Àpò developers will never ask for your seed phrase or private keys.
+
+<b>About Monero</b>
+
+Monero (XMR) is a privacy-focused cryptocurrency that uses ring signatures, stealth addresses, and confidential transactions to keep your financial information private.

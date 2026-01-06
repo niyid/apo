@@ -1,3 +1,15 @@
+#!/bin/bash
+
+echo "=== Complete Fix Script ==="
+
+# 1. Create flavor-specific ApoApp
+echo "1. Creating flavor-specific ApoApp files..."
+./create-flavor-specific-apoapp.sh
+
+# 2. Update SendScreen.kt
+echo ""
+echo "2. Updating SendScreen.kt..."
+cat > app/src/main/java/com/techducat/apo/ui/screens/SendScreen.kt << 'EOF'
 package com.techducat.apo.ui.screens
 
 import androidx.compose.foundation.layout.*
@@ -192,3 +204,10 @@ private fun parseMoneroUri(uri: String): String {
         uri
     }
 }
+EOF
+
+echo "✓ SendScreen.kt updated"
+
+echo ""
+echo "=== Fix Complete ==="
+echo "Now try: ./gradlew assembleFdroidDebug"

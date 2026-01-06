@@ -1,0 +1,10 @@
+Version 0.0.31
+
+• Initial F-Droid release
+• Native Monero wallet functionality
+• Material Design 3 interface
+• Biometric authentication support
+• QR code scanning and generation
+• Transaction history with search
+• Multi-language support
+• Enhanced security features

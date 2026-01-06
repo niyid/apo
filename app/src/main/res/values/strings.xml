@@ -34,6 +34,8 @@
     <string name="send_confirm_to">To:</string>
     <string name="send_confirm_warning">This transaction cannot be reversed. Please verify the details carefully.</string>
     <string name="send_confirm_button">Confirm &amp; Send</string>
+    <string name="send_recipient">Recipient</string>
+    <string name="send_payment_id">Payment ID</string>
     <string name="receive_title">Receive Monero</string>
     <string name="receive_your_address">Your Monero Address</string>
     <string name="receive_qr_code">QR Code</string>
@@ -887,4 +889,10 @@
     <string name="tx_list_fee">Fee: %s</string>
     <string name="tx_locked">Locked until block %1$d (in ~%2$d minutes)</string>
     <string name="xmr_unconfirmed_amount">+ %s XMR unconfirmed</string>
+    
+    <string name="qr_scan_instructions">Align the QR code within the frame</string>
+    <string name="qr_scanned_successfully">QR code scanned successfully</string>
+    <string name="camera_permission_required">Camera permission is required to scan QR codes</string>
+    <string name="camera_permission_denied">Camera permission denied. Please enable it in settings.</string>
+    
 </resources>

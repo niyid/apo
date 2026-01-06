@@ -181,7 +181,8 @@ fun MoneroWalletScreen(walletSuite: WalletSuite, dataStore: WalletDataStore) {
                 1 -> SendScreen(
                     walletSuite, unlockedBalance,
                     { addr, amt ->
-                        walletSuite.sendTransaction(addr, amt, object : WalletSuite.TransactionCallback {
+                        val amountDouble = amt.toDoubleOrNull() ?: 0.0
+                        walletSuite.sendTransaction(addr, amountDouble, object : WalletSuite.TransactionCallback {
                             override fun onSuccess(txId: String, amount: Long) {
                                 sendSuccess = txId
                                 sendError = null

@@ -1,0 +1,6 @@
+# Proprietary files to exclude from F-Droid builds
+google-services.json
+*.keystore
+*.jks
+key.properties
+local.properties
