@@ -1,0 +1,57 @@
+========================================
+F-Droid Build Report
+========================================
+Generated: Wed Jan  7 15:13:10 WAT 2026
+Branch: fdroid
+Version: 0.0.31
+Version Code: 31
+
+Build Configuration:
+- Flavor: fdroid (FOSS-only dependencies)
+- Signing: Unsigned (F-Droid will sign)
+- Firebase: Disabled
+- ML Kit: Disabled (using ZXing instead)
+- Google Services: Disabled
+
+Build Status:
+- F-Droid Debug Build: SUCCESS
+- F-Droid Release Build: SUCCESS
+- Unit Tests: PASSED
+- Lint: PASSED
+
+APK Information:
+- Debug APK: app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk
+- Release APK: app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk
+- Release Size: 45M
+- Signing Status: Unsigned (as expected for F-Droid)
+
+Validation:
+F-Droid Validation
+==========================================
+
+✓ Build flavors configured
+✓ Firebase only in playstore flavor
+✓ Fastlane metadata structure exists
+✓ Screenshots present (6)
+✓ Icon present
+✓ title.txt present
+✓ short_description.txt present
+✓ full_description.txt present
+✓ LICENSE file present
+
+==========================================
+Validation Summary
+==========================================
+Errors: 0
+Warnings: 0
+
+✓ All checks passed!
+
+For Play Store builds, use:
+./gradlew bundlePlaystoreRelease \
+  -PKEY_ALIAS=key0 \
+  -PKEY_PASSWORD=Ps-ef1986 \
+  -PKEYSTORE=/home/niyid/git/server_extras/techducat.jks \
+  -PSTORE_PASSWORD=Ps-ef1986
+
+========================================

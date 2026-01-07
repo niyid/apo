@@ -44,6 +44,26 @@ android {
             abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
         }
     }
+    
+    signingConfigs {
+        create("release") {
+            // Keystore configuration - only applied when properties are provided
+            val keystorePath = project.findProperty("KEYSTORE") as String?
+            val storePass = project.findProperty("STORE_PASSWORD") as String?
+            val alias = project.findProperty("KEY_ALIAS") as String?
+            val keyPass = project.findProperty("KEY_PASSWORD") as String?
+            
+            if (keystorePath != null && storePass != null && alias != null && keyPass != null) {
+                val keystoreFile = file(keystorePath)
+                if (keystoreFile.exists()) {
+                    storeFile = keystoreFile
+                    storePassword = storePass
+                    keyAlias = alias
+                    keyPassword = keyPass
+                }
+            }
+        }
+    }
 
     // Add build flavors for F-Droid compatibility
     flavorDimensions += "distribution"
@@ -94,26 +114,17 @@ android {
             assets.srcDirs("$projectDir/schemas")
         }
     }    
-    
-    signingConfigs {
-        create("release") {
-            storeFile = file(project.findProperty("KEYSTORE") as String? ?: "keystore.jks")
-            storePassword = project.findProperty("STORE_PASSWORD") as String?
-            keyAlias = project.findProperty("KEY_ALIAS") as String?
-            keyPassword = project.findProperty("KEY_PASSWORD") as String?
-        }
-    }
 
     buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("release")
+        getByName("release") {
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Note: Signing will be configured per variant in afterEvaluate
         }
-        debug {
+        getByName("debug") {
             isDebuggable = true
         }
     }
@@ -164,14 +175,58 @@ android {
     }
 }
 
-// Hook into native library processing to realign libraries
+// Configure signing per variant after evaluation
 afterEvaluate {
-    tasks.matching { task ->
-        task.name.startsWith("strip") && task.name.contains("DebugSymbol")
-    }.configureEach {
+    val hasAllSigningProperties = project.hasProperty("KEYSTORE") &&
+                                 project.hasProperty("STORE_PASSWORD") &&
+                                 project.hasProperty("KEY_ALIAS") &&
+                                 project.hasProperty("KEY_PASSWORD")
+    
+    val releaseSigningConfig = android.signingConfigs.getByName("release")
+    val signingReady = hasAllSigningProperties && releaseSigningConfig.storeFile?.exists() == true
+    
+    // Access build types to configure signing
+    val releaseBuildType = android.buildTypes.getByName("release")
+    val debugBuildType = android.buildTypes.getByName("debug")
+    
+    // Default to no signing for all builds
+    releaseBuildType.signingConfig = null
+    debugBuildType.signingConfig = null
+    
+    // Only apply signing to Play Store builds when credentials are provided
+    if (signingReady) {
+        // In newer AGP versions, we need to set signing config on the build type
+        // and then handle variants appropriately
+        println("✓ Signing config available - Play Store builds will be signed")
+        
+        // For Play Store release builds, set the signing config
+        android.productFlavors.getByName("playstore") {
+            // This flavor will use the release signing config when built as release
+            releaseBuildType.signingConfig = releaseSigningConfig
+        }
+    } else {
+        println("ℹ No signing config provided - all builds will be unsigned")
+    }
+    
+    // Log F-Droid builds as unsigned
+    android.applicationVariants.all {
+        if (name.contains("fdroidRelease", ignoreCase = true)) {
+            println("ℹ F-Droid release: Will be unsigned (F-Droid signs the APK)")
+        }
+        if (name.contains("playstoreRelease", ignoreCase = true) && signingReady) {
+            println("✓ Play Store release: Will be signed with provided keystore")
+        }
+    }
+}
+
+// Hook into native library processing to realign libraries
+tasks.whenTaskAdded {
+    if (name.startsWith("strip") && name.contains("DebugSymbol")) {
         doLast {
             println("=== Realigning native libraries for 16KB page size ===")
             
+            // libbarhopper_v3.so is only in playstore builds (ML Kit)
+            // libimage_processing_util_jni.so is in both builds (CameraX)
             val libsToAlign = listOf("libbarhopper_v3.so", "libimage_processing_util_jni.so")
             val alignScript = File(project.rootDir, "align_elf.py")
             
@@ -186,43 +241,67 @@ afterEvaluate {
             
             var filesProcessed = 0
             var filesAligned = 0
+            val filesNotFound = mutableListOf<String>()
+            
             if (strippedLibsDir.exists()) {
                 // Only process arm64-v8a and x86_64 (as per your filter)
                 val archsToProcess = listOf("arm64-v8a", "x86_64")
                 
+                // Track which libraries we've seen
+                val foundLibs = mutableSetOf<String>()
+                
                 project.fileTree(strippedLibsDir) {
-                    libsToAlign.forEach { include("**/$it") }
+                    include("**/*.so")
                 }.forEach { file ->
-                    // Only process if it's in an arch we care about
-                    if (archsToProcess.any { file.path.contains("/$it/") }) {
-                        filesProcessed++
-                        try {
-                            val tempFile = File("${file.absolutePath}.tmp")
-                            
-                            println("  Realigning: ${file.name} (${file.parentFile.name})")
-                            
-                            // Run Python alignment script
-                            val result = project.exec {
-                                commandLine("python3", alignScript.absolutePath, file.absolutePath, tempFile.absolutePath)
-                                isIgnoreExitValue = true
-                            }
-                            
-                            if (result.exitValue == 0 && tempFile.exists()) {
-                                val originalSize = file.length()
+                    if (libsToAlign.contains(file.name)) {
+                        foundLibs.add(file.name)
+                        // Only process if it's in an arch we care about
+                        if (archsToProcess.any { file.path.contains("/$it/") }) {
+                            filesProcessed++
+                            try {
+                                val tempFile = File("${file.absolutePath}.tmp")
                                 
-                                file.delete()
-                                tempFile.renameTo(file)
+                                println("  Realigning: ${file.name} (${file.parentFile.name})")
                                 
-                                println("    ✓ Aligned successfully (${originalSize} bytes)")
-                                filesAligned++
-                            } else {
-                                println("    ✗ Alignment failed")
-                                if (tempFile.exists()) tempFile.delete()
+                                // Run Python alignment script
+                                val processBuilder = ProcessBuilder(
+                                    "python3",
+                                    alignScript.absolutePath,
+                                    file.absolutePath,
+                                    tempFile.absolutePath
+                                )
+                                val process = processBuilder.start()
+                                val exitCode = process.waitFor()
+                                
+                                if (exitCode == 0 && tempFile.exists()) {
+                                    val originalSize = file.length()
+                                    
+                                    file.delete()
+                                    tempFile.renameTo(file)
+                                    
+                                    println("    ✓ Aligned successfully (${originalSize} bytes)")
+                                    filesAligned++
+                                } else {
+                                    println("    ✗ Alignment failed")
+                                    if (tempFile.exists()) tempFile.delete()
+                                }
+                            } catch (e: Exception) {
+                                println("    ✗ Error: ${e.message}")
                             }
-                        } catch (e: Exception) {
-                            println("    ✗ Error: ${e.message}")
                         }
                     }
+                }
+                
+                // Report which libraries weren't found (this is normal for flavor-specific libs)
+                libsToAlign.forEach { lib ->
+                    if (!foundLibs.contains(lib)) {
+                        filesNotFound.add(lib)
+                    }
+                }
+                
+                if (filesNotFound.isNotEmpty()) {
+                    println("  ℹ Libraries not found in this build: ${filesNotFound.joinToString(", ")}")
+                    println("    (This is normal for flavor-specific libraries)")
                 }
             }
             
@@ -394,7 +473,7 @@ dependencies {
 // Apply Google Services and Crashlytics only for Play Store builds
 gradle.taskGraph.whenReady {
     val isPlayStoreBuild = gradle.taskGraph.allTasks.any { task ->
-        task.name.contains("Playstore", ignoreCase = true)
+        task.name.contains("playstore", ignoreCase = true)
     }
     
     if (isPlayStoreBuild) {

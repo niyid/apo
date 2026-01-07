@@ -39,6 +39,21 @@ git push -u origin fdroid
 ./scripts/test-fdroid-build.sh
 ```
 
+### Manual Build Commands
+```bash
+# Debug build
+./gradlew assembleFdroidDebug
+
+# Release build
+./gradlew assembleFdroidRelease
+
+# Run tests
+./gradlew testFdroidDebugUnitTest
+
+# Lint
+./gradlew lintFdroidRelease
+```
+
 ### Clean Up Branch
 ```bash
 ./scripts/cleanup-fdroid.sh
@@ -85,7 +100,7 @@ chmod +x setup-fdroid-branch.sh scripts/*.sh
 ```bash
 ./gradlew clean
 ./scripts/validate-fdroid.sh
-./gradlew assembleRelease
+./gradlew assembleFdroidRelease
 ```
 
 ### "Firebase still present"
@@ -133,8 +148,8 @@ vim fastlane/metadata/android/en-US/full_description.txt
 
 ### Test APK
 ```bash
-./gradlew assembleRelease
-adb install app/build/outputs/apk/release/app-release.apk
+./gradlew assembleFdroidRelease
+adb install app/build/outputs/apk/fdroid/release/app-fdroid-release.apk
 ```
 
 ## 📱 Version Management
