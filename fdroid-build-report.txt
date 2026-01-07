@@ -1,7 +1,7 @@
 ========================================
 F-Droid Build Report
 ========================================
-Generated: Wed Jan  7 15:13:10 WAT 2026
+Generated: Wed Jan  7 16:17:37 WAT 2026
 Branch: fdroid
 Version: 0.0.31
 Version Code: 31
@@ -22,10 +22,15 @@ Build Status:
 APK Information:
 - Debug APK: app/build/outputs/apk/fdroid/debug/app-fdroid-debug.apk
 - Release APK: app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk
+- Release APK Name: app-fdroid-release-unsigned.apk
 - Release Size: 45M
-- Signing Status: Unsigned (as expected for F-Droid)
+- Signing Status: UNSIGNED (correct for F-Droid)
 
-Validation:
+Signing Analysis:
+Filename: app-fdroid-release-unsigned.apk
+Signature files in META-INF: 0
+
+Validation Summary:
 F-Droid Validation
 ==========================================
 
@@ -46,6 +51,13 @@ Errors: 0
 Warnings: 0
 
 ✓ All checks passed!
+
+Proprietary Dependencies Check:
+Firebase: NOT FOUND
+Google Play Services: NOT FOUND
+ML Kit: NOT FOUND
+ZXing QR Code: FOUND
+Google Barcode (barhopper): NOT FOUND
 
 For Play Store builds, use:
 ./gradlew bundlePlaystoreRelease \
