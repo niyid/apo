@@ -10,7 +10,6 @@ AuthorEmail: neeyeed@gmail.com
 WebSite: https://github.com/niyid
 SourceCode: https://github.com/niyid/apo
 IssueTracker: https://github.com/niyid/apo/issues
-Translation: 
 
 AutoName: Àpò
 Summary: A Monero wallet
@@ -30,8 +29,10 @@ Builds:
   - versionName: '0.0.31'
     versionCode: 31
     commit: v0.0.31
+    subdir: app
     gradle:
       - yes
+    output: app/build/outputs/apk/fdroid/release/app-fdroid-release-unsigned.apk
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
