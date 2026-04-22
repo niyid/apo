@@ -21,8 +21,6 @@ android {
         versionCode = project.property("VERSION_CODE").toString().toInt()
         versionName = project.property("VERSION_NAME").toString()
         
-        buildConfigField("String", "CHANGENOW_API_KEY", "\"${project.findProperty("changenow.api.key") ?: ""}\"")
-        
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         resourceConfigurations += listOf(
