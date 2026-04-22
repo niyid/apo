@@ -20,6 +20,18 @@ plugins {
     id("androidx.navigation.safeargs.kotlin")
 }
 
+// Apply Google Services and Crashlytics only for Play Store builds.
+// Must be done at configuration time (before project evaluation) — NOT inside
+// gradle.taskGraph.whenReady, which fires after evaluation and causes:
+//   "Cannot run Project.afterEvaluate(Action) when the project is already evaluated."
+val isPlayStoreBuild = gradle.startParameter.taskNames.any {
+    it.contains("playstore", ignoreCase = true)
+}
+if (isPlayStoreBuild) {
+    apply(plugin = "com.google.gms.google-services")
+    apply(plugin = "com.google.firebase.crashlytics")
+}
+
 // ===== SECURITY: Load secrets from local.properties =====
 // local.properties is NOT committed to version control
 
@@ -545,18 +557,6 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.navigation:navigation-testing:2.8.5")
-}
-
-// Apply Google Services and Crashlytics only for Play Store builds
-gradle.taskGraph.whenReady {
-    val isPlayStoreBuild = gradle.taskGraph.allTasks.any { task ->
-        task.name.contains("playstore", ignoreCase = true)
-    }
-
-    if (isPlayStoreBuild) {
-        apply(plugin = "com.google.gms.google-services")
-        apply(plugin = "com.google.firebase.crashlytics")
-    }
 }
 
 // ===== SECURITY NOTES FOR local.properties =====
