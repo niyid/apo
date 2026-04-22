@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.techducat.apo.network.ChangeNowSwapService
 import com.techducat.apo.R
 
 // ============================================================================
@@ -72,7 +71,7 @@ fun TwoRowNavigationBar(
                 thickness = 0.5.dp
             )
             
-            // Second Row: Additional Features (5 items)
+            // Second Row: Additional Features (4 items)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -80,42 +79,33 @@ fun TwoRowNavigationBar(
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 NavItem(
-                    icon = Icons.Default.SwapHoriz,
-                    label = stringResource(R.string.nav_exchange),
-                    selected = selectedTab == 4,
-                    onClick = { onTabSelected(4) },
-                    enabled = ChangeNowSwapService.isConfigured()
-                )
-                NavItem(
                     icon = Icons.Default.ContactPage,
                     label = stringResource(R.string.nav_contacts),
-                    selected = selectedTab == 5,
-                    onClick = { onTabSelected(5) }
+                    selected = selectedTab == 4,
+                    onClick = { onTabSelected(4) }
                 )
                 NavItem(
                     icon = Icons.Default.LocationOn,
                     label = stringResource(R.string.nav_subaddresses),
-                    selected = selectedTab == 6,
-                    onClick = { onTabSelected(6) }
+                    selected = selectedTab == 5,
+                    onClick = { onTabSelected(5) }
                 )
                 NavItem(
                     icon = Icons.Default.QrCode,
                     label = stringResource(R.string.nav_request),
-                    selected = selectedTab == 7,
-                    onClick = { onTabSelected(7) }
+                    selected = selectedTab == 6,
+                    onClick = { onTabSelected(6) }
                 )
                 NavItem(
                     icon = Icons.Default.Tune,
                     label = stringResource(R.string.nav_enhanced_send_short),
-                    selected = selectedTab == 8,
-                    onClick = { onTabSelected(8) }
+                    selected = selectedTab == 7,
+                    onClick = { onTabSelected(7) }
                 )
             }
         }
     }
 }
 
-// Note: Based on the original file, you'll need to make sure:
-// 1. ChangeNowSwapService.isConfigured() is available (defined elsewhere)
-// 2. The string resources (R.string.*) are defined in your strings.xml
-// 3. NavItem composable is imported/available
+// Note: The string resources (R.string.*) must be defined in your strings.xml
+// NavItem composable must be imported/available

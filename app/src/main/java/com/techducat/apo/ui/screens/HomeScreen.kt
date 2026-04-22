@@ -48,8 +48,7 @@ fun HomeScreen(
     daemonHeight: Long,
     onRefresh: () -> Unit,
     onReceiveClick: () -> Unit,
-    onSendClick: () -> Unit,
-    onExchangeClick: () -> Unit = {}
+    onSendClick: () -> Unit
 ) {
     val balanceXMR = WalletSuite.convertAtomicToXmr(balance).toDoubleOrNull() ?: 0.0
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
@@ -206,10 +205,6 @@ fun HomeScreen(
                 QuickActionButton(
                     Icons.Default.Send, stringResource(R.string.nav_send),
                     Modifier.weight(1f), onSendClick, Color(0xFFFF6600)
-                )
-                QuickActionButton(
-                    Icons.Default.SwapHoriz, stringResource(R.string.nav_exchange),
-                    Modifier.weight(1f), onExchangeClick, Color(0xFF9C27B0)
                 )
             }
         }

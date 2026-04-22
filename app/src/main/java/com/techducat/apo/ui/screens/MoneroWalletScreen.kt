@@ -175,8 +175,7 @@ fun MoneroWalletScreen(walletSuite: WalletSuite, dataStore: WalletDataStore) {
                     walletHeight, daemonHeight,
                     { walletSuite.triggerImmediateSync() },
                     { showReceiveDialog = true },
-                    { selectedTab = 1 },
-                    { selectedTab = 4 }
+                    { selectedTab = 1 }
                 )
                 1 -> SendScreen(
                     walletSuite, unlockedBalance,
@@ -198,25 +197,24 @@ fun MoneroWalletScreen(walletSuite: WalletSuite, dataStore: WalletDataStore) {
                 )
                 2 -> HistoryScreen(walletSuite)
                 3 -> SettingsScreen(walletSuite, walletAddress)
-                4 -> ExchangeScreen(walletSuite, walletAddress, unlockedBalance)
-                5 -> AddressBookScreen(
+                4 -> AddressBookScreen(
                     dataStore,
                     onSelectAddress = { selectedAddress ->
                         // Store selected address for enhanced send
-                        selectedTab = 8
+                        selectedTab = 7
                     },
                     onClose = { selectedTab = 0 }
                 )
-                6 -> SubaddressScreen(
+                5 -> SubaddressScreen(
                     walletSuite = walletSuite,
                     dataStore = dataStore,
                     onBack = { selectedTab = 0 }
                 )
-                7 -> PaymentRequestScreen(
+                6 -> PaymentRequestScreen(
                     walletAddress = walletAddress,
                     onBack = { selectedTab = 0 }
                 )
-                8 -> EnhancedSendScreen(
+                7 -> EnhancedSendScreen(
                     walletSuite = walletSuite,
                     dataStore = dataStore,
                     unlockedBalance = unlockedBalance,
