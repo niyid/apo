@@ -5,12 +5,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -38,7 +38,6 @@ fun PaymentRequestScreen(
     var recipientName by remember { mutableStateOf("") }
     var generatedUri by remember { mutableStateOf<String?>(null) }
     var showUriDialog by remember { mutableStateOf(false) }
-    val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val snackbarHost = remember { SnackbarHostState() }
     
@@ -48,7 +47,7 @@ fun PaymentRequestScreen(
                 title = { Text(stringResource(R.string.payment_request), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, stringResource(R.string.menu_back))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.menu_back))
                     }
                 }
             )

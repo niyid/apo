@@ -8,6 +8,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.CallReceived
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,9 +18,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -53,7 +53,8 @@ fun HomeScreen(
     val balanceXMR = WalletSuite.convertAtomicToXmr(balance).toDoubleOrNull() ?: 0.0
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
     val lockedXMR = WalletSuite.convertAtomicToXmr(lockedBalance).toDoubleOrNull() ?: 0.0
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     var addressCopied by remember { mutableStateOf(false) }
     
     LaunchedEffect(addressCopied) {
@@ -176,7 +177,7 @@ fun HomeScreen(
                         if (isSyncing) {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 LinearProgressIndicator(
-                                    progress = (syncProgress / 100.0).toFloat(),
+                                    progress = { (syncProgress / 100.0).toFloat() },
                                     modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
                                     color = Color.White,
                                     trackColor = Color.White.copy(0.3f)
@@ -199,11 +200,11 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 QuickActionButton(
-                    Icons.Default.CallReceived, stringResource(R.string.nav_receive),
+                    Icons.AutoMirrored.Filled.CallReceived, stringResource(R.string.nav_receive),
                     Modifier.weight(1f), onReceiveClick, Color(0xFF4CAF50)
                 )
                 QuickActionButton(
-                    Icons.Default.Send, stringResource(R.string.nav_send),
+                    Icons.AutoMirrored.Filled.Send, stringResource(R.string.nav_send),
                     Modifier.weight(1f), onSendClick, Color(0xFFFF6600)
                 )
             }
@@ -240,7 +241,7 @@ fun HomeScreen(
                             )
                             
                             IconButton(onClick = {
-                                clipboardManager.setText(AnnotatedString(walletAddress))
+                                clipboardScope.launch { clipboard.setText(walletAddress) }
                                 addressCopied = true
                             }) {
                                 Icon(

@@ -6,14 +6,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -31,7 +31,8 @@ import com.techducat.apo.R
 @Composable
 fun TransactionCard(transaction: Transaction) {
     var expanded by remember { mutableStateOf(false) }
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     var txIdCopied by remember { mutableStateOf(false) }
     
     // Get string resources at composable level
@@ -78,7 +79,7 @@ fun TransactionCard(transaction: Transaction) {
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            if (isReceived) Icons.Default.CallReceived else Icons.Default.Send,
+                            if (isReceived) Icons.AutoMirrored.Filled.CallReceived else Icons.AutoMirrored.Filled.Send,
                             contentDescription = null,
                             tint = if (isReceived) Color(0xFF4CAF50) else Color(0xFFFF6600),
                             modifier = Modifier.size(24.dp)
@@ -182,7 +183,7 @@ fun TransactionCard(transaction: Transaction) {
                         )
                         IconButton(
                             onClick = {
-                                clipboardManager.setText(AnnotatedString(transaction.txId))
+                                clipboardScope.launch { clipboard.setText(transaction.txId) }
                                 txIdCopied = true
                             }
                         ) {

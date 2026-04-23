@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -82,7 +83,7 @@ fun TransactionConfirmationDialog(
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        Divider()
+                        HorizontalDivider()
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -165,7 +166,7 @@ fun TransactionConfirmationDialog(
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.processing))
                 } else {
-                    Icon(Icons.Default.Send, null)
+                    Icon(Icons.AutoMirrored.Filled.Send, null)
                     Spacer(Modifier.width(8.dp))
                     Text(confirmSendText)
                 }

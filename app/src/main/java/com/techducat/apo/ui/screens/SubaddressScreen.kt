@@ -6,12 +6,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.unit.dp
 import com.techducat.apo.ui.components.EmptyState
 import kotlinx.coroutines.launch
@@ -24,7 +24,6 @@ import com.techducat.apo.storage.WalletDataStore
 import com.techducat.apo.ui.components.SubaddressCard
 import com.techducat.apo.models.Subaddress
 import com.techducat.apo.R
-import androidx.compose.ui.text.AnnotatedString
 
 // ============================================================================
 // SUBADDRESSSCREEN
@@ -41,7 +40,7 @@ fun SubaddressScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedSubaddress by remember { mutableStateOf<Subaddress?>(null) }
     var showDetailsDialog by remember { mutableStateOf(false) }
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val snackbarHost = remember { SnackbarHostState() }
     
@@ -62,7 +61,7 @@ fun SubaddressScreen(
                         onClick = onBack
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.menu_back)
                         )
                     }
@@ -130,8 +129,8 @@ fun SubaddressScreen(
                         SubaddressCard(
                             subaddress = sub,
                             onCopy = {
-                                clipboardManager.setText(AnnotatedString(sub.address))
                                 scope.launch {
+                                    clipboard.setText(sub.address)
                                     snackbarHost.showSnackbar(messageCopyAddress)
                                 }
                             },

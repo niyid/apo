@@ -13,13 +13,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
@@ -69,7 +69,7 @@ fun EnhancedSendScreen(
     var estimatedFee by remember { mutableStateOf(0.0) }
     var isSending by remember { mutableStateOf(false) }
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val snackbarHost = remember { SnackbarHostState() }
     
@@ -244,7 +244,7 @@ fun EnhancedSendScreen(
                             }
                         },
                         onPaste = {
-                            clipboardManager.getText()?.text?.let { text ->
+                            scope.launch { clipboard.getText()?.let { text ->
                                 recipients = recipients.mapIndexed { i, recipient ->
                                     if (i == index) recipient.copy(address = text) else recipient
                                 }
@@ -328,7 +328,7 @@ fun EnhancedSendScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.processing))
                     } else {
-                        Icon(Icons.Default.Send, null)
+                        Icon(Icons.AutoMirrored.Filled.Send, null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.review_transaction))
                     }

@@ -12,8 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,7 +28,8 @@ import com.techducat.apo.R
 
 @Composable
 fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
     
     val qrBitmap = remember(address) {
@@ -113,7 +112,7 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
                 
                 Button(
                     onClick = {
-                        clipboardManager.setText(AnnotatedString(address))
+                        clipboardScope.launch { clipboard.setText(address) }
                         copied = true
                     },
                     modifier = Modifier.fillMaxWidth()

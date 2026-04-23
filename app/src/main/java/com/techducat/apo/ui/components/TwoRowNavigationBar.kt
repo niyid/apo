@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -47,7 +48,7 @@ fun TwoRowNavigationBar(
                     onClick = { onTabSelected(0) }
                 )
                 NavItem(
-                    icon = Icons.Default.Send,
+                    icon = Icons.AutoMirrored.Filled.Send,
                     label = stringResource(R.string.nav_send),
                     selected = selectedTab == 1,
                     onClick = { onTabSelected(1) }
@@ -66,7 +67,7 @@ fun TwoRowNavigationBar(
                 )
             }
             
-            Divider(
+                HorizontalDivider(
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
                 thickness = 0.5.dp
             )

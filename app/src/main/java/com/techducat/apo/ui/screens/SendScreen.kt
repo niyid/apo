@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -148,7 +149,7 @@ fun SendScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(creatingTransactionText)
                     } else {
-                        Icon(Icons.Default.Send, null)
+                        Icon(Icons.AutoMirrored.Filled.Send, null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.send_transaction), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     }

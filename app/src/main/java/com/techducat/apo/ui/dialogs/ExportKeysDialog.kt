@@ -9,8 +9,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,7 +30,7 @@ fun ExportKeysDialog(
     walletSuite: WalletSuite,
     onDismiss: () -> Unit
 ) {
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     var viewKeyCopied by remember { mutableStateOf(false) }
     var spendKeyCopied by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()  // Use the correct coroutine scope
@@ -79,7 +77,7 @@ fun ExportKeysDialog(
                     keyValue = viewKey,
                     isCopied = viewKeyCopied,
                     onCopy = {
-                        clipboardManager.setText(AnnotatedString(viewKey))
+                        coroutineScope.launch { clipboard.setText(viewKey) }
                         viewKeyCopied = true
                     },
                     coroutineScope = coroutineScope  // Pass the correct scope
@@ -90,7 +88,7 @@ fun ExportKeysDialog(
                     keyValue = spendKey,
                     isCopied = spendKeyCopied,
                     onCopy = {
-                        clipboardManager.setText(AnnotatedString(spendKey))
+                        coroutineScope.launch { clipboard.setText(spendKey) }
                         spendKeyCopied = true
                     },
                     coroutineScope = coroutineScope  // Pass the correct scope

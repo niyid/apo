@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -160,7 +161,7 @@ fun HistoryScreen(walletSuite: WalletSuite) {
             if (transactions.isEmpty() && !isLoading && errorMessage == null) {
                 item {
                     EmptyState(
-                        icon = Icons.Default.ReceiptLong,
+                        icon = Icons.AutoMirrored.Filled.ReceiptLong,
                         title = stringResource(R.string.empty_transactions),
                         message = stringResource(R.string.history_your_transaction_history_will)
                     )
