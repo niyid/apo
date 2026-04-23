@@ -529,7 +529,6 @@ dependencies {
 
     // ML Kit: proprietary Google library — Play Store flavor ONLY.
     // F-Droid builds fall back to ZXing above; this dep is never included in fdroid variants.
-    "playstoreImplementation"("com.google.mlkit:barcode-scanning:17.2.0")
 
     // Camera (shared — used by both flavors for QR scanning via ZXing or ML Kit)
     implementation("androidx.camera:camera-camera2:1.3.1")
