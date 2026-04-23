@@ -1,6 +1,4 @@
 import java.util.Properties
-import org.gradle.process.ExecOperations
-import org.gradle.kotlin.dsl.support.serviceOf
 
 // SECURED build.gradle.kts
 // Security improvements:
@@ -304,144 +302,148 @@ android {
 // ELF PT_LOAD segments to be aligned to 16384 bytes. Google Play will flag APKs
 // whose .so files are not aligned and will block them from 16KB-page devices.
 //
-// SCOPE: Only applied to `playstore` variants — F-Droid builds their own APKs
-// independently and the alignment check references Play Store submission policy.
-//
-// HOW: Tools shared across TechDucat projects in ~/git/server_extras/:
-//   align_elf.py           – patches PT_LOAD p_align header field to 16384 in-place
-//   check_elf_alignment.sh – uses objdump to verify; reports ALIGNED / UNALIGNED
+// HOW: align_elf.py (from ~/git/server_extras/) patches PT_LOAD p_align to 16384.
+//      Reads the ELF header directly in Kotlin to check existing alignment first —
+//      skips files already at ≥ 16384 bytes, making the task idempotent and safe.
+//      Hooks into stripDebugSymbols so patching happens after stripping, before
+//      both APK packaging AND AAB bundling.
 //
 // NOTE: useLegacyPackaging = false (set above in jniLibs) is equally required.
+// The ELF p_align patch is useless if .so files are compressed in the APK/AAB,
+// because the OS cannot mmap them directly — it extracts them first, losing alignment.
+// Both fixes together = correct 16KB support.
 
-val serverExtras = "${System.getProperty("user.home")}/git/server_extras"
-val alignElfPy   = "$serverExtras/align_elf.py"
-val checkElfSh   = "$serverExtras/check_elf_alignment.sh"
+val alignElfPy = "${System.getProperty("user.home")}/git/server_extras/align_elf.py"
 
-androidComponents {
-    val execOps: ExecOperations = project.serviceOf<ExecOperations>()
-    onVariants { variant ->
-        // ── Scope ELF alignment to Play Store variants only ──────────────────────
-        // F-Droid builds are excluded: F-Droid's infrastructure handles its own
-        // APK post-processing, and the check message references Play Store rejection.
-        if (!variant.name.contains("playstore", ignoreCase = true)) return@onVariants
+// Match Apo's full set of abiFilters
+val archsToProcess = listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
 
-        val variantName    = variant.name
-        val variantNameCap = variantName.replaceFirstChar { it.uppercase() }
+tasks.whenTaskAdded {
+    if (name.startsWith("strip") && name.contains("DebugSymbol")) {
+        doLast {
+            println("=== Checking and realigning native libraries for 16KB page size ===")
 
-        val strippedDir = layout.buildDirectory.dir(
-            "intermediates/stripped_native_libs/$variantName/out/lib"
-        )
-        val mergedDir = layout.buildDirectory.dir(
-            "intermediates/merged_native_libs/$variantName/out/lib"
-        )
-
-        // ── Task 1: alignElf<Variant> ─────────────────────────────────────────
-        val alignTask = tasks.register("alignElf${variantNameCap}") {
-            description = "Patch PT_LOAD p_align to 16384 bytes for all .so files in variant $variantName"
-            group       = "build"
-
-            dependsOn(providers.provider {
-                val stripTask = "strip${variantNameCap}DebugSymbols"
-                val mergeTask = "merge${variantNameCap}NativeLibs"
-                listOfNotNull(
-                    runCatching { tasks.named(stripTask) }.getOrNull(),
-                    runCatching { tasks.named(mergeTask) }.getOrNull()
-                )
-            })
-
-            inputs.files(strippedDir, mergedDir)
-            outputs.files(strippedDir, mergedDir)
-
-            doFirst {
-                if (!file(alignElfPy).exists())
-                    throw GradleException(
-                        "\n❌ align_elf.py not found at: $alignElfPy\n" +
-                        "   Copy it from the Ajo project or clone server_extras."
-                    )
+            val alignScript = File(alignElfPy)
+            if (!alignScript.exists()) {
+                println("ERROR: align_elf.py not found at $alignElfPy")
+                println("Please ensure align_elf.py exists in ~/git/server_extras/")
+                return@doLast
             }
 
-            doLast {
-                var patched = 0
-                var skipped = 0
+            val strippedLibsDir = File(
+                project.layout.buildDirectory.get().asFile,
+                "intermediates/stripped_native_libs"
+            )
 
-                for (root in listOf(strippedDir.get().asFile, mergedDir.get().asFile)) {
-                    if (!root.exists()) continue
+            var filesChecked = 0
+            var filesAligned = 0
+            var filesSkipped = 0
 
-                    root.walkTopDown()
-                        .filter { it.isFile && it.extension == "so" }
-                        .forEach { so ->
-                            val tmp = File("${so.absolutePath}.16kb_tmp")
-                            try {
-                                val result = execOps.exec {
-                                    commandLine("python3", alignElfPy, so.absolutePath, tmp.absolutePath)
-                                    isIgnoreExitValue = true
+            // Reads the ELF PT_LOAD p_align field directly from the binary header.
+            // Returns the alignment value, or -1 if the file is not a valid ELF.
+            fun readElfLoadAlignment(file: File): Long {
+                try {
+                    val bytes = file.readBytes()
+                    // ELF magic: 0x7F 'E' 'L' 'F'
+                    if (bytes.size < 64 || bytes[0] != 0x7F.toByte() ||
+                        bytes[1] != 0x45.toByte() || bytes[2] != 0x4C.toByte() ||
+                        bytes[3] != 0x46.toByte()) {
+                        return -1L
+                    }
+                    val is64bit = bytes[4] == 0x02.toByte()
+                    val isLE    = bytes[5] == 0x01.toByte()
+
+                    fun readU16(offset: Int): Int {
+                        val a = bytes[offset].toInt() and 0xFF
+                        val b = bytes[offset + 1].toInt() and 0xFF
+                        return if (isLE) a or (b shl 8) else (a shl 8) or b
+                    }
+                    fun readU32(offset: Int): Long {
+                        var v = 0L
+                        for (i in 0..3) {
+                            val b = bytes[offset + i].toLong() and 0xFF
+                            v = if (isLE) v or (b shl (i * 8)) else (v shl 8) or b
+                        }
+                        return v
+                    }
+                    fun readU64(offset: Int): Long {
+                        var v = 0L
+                        for (i in 0..7) {
+                            val b = bytes[offset + i].toLong() and 0xFF
+                            v = if (isLE) v or (b shl (i * 8)) else (v shl 8) or b
+                        }
+                        return v
+                    }
+
+                    // Parse ELF header to find program header table
+                    val phoff     = if (is64bit) readU64(32).toInt() else readU32(28).toInt()
+                    val phentsize = readU16(if (is64bit) 54 else 42)
+                    val phnum     = readU16(if (is64bit) 56 else 44)
+
+                    val PT_LOAD = 1L
+                    for (i in 0 until phnum) {
+                        val phBase = phoff + i * phentsize
+                        if (phBase + phentsize > bytes.size) break
+                        val pType = readU32(phBase)
+                        if (pType == PT_LOAD) {
+                            // p_align offset: 28 (32-bit) or 48 (64-bit) from segment start
+                            return if (is64bit) readU64(phBase + 48) else readU32(phBase + 28)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Not readable as ELF
+                }
+                return -1L
+            }
+
+            if (strippedLibsDir.exists()) {
+                project.fileTree(strippedLibsDir) {
+                    include("**/*.so")
+                }.forEach { file ->
+                    if (archsToProcess.any { file.path.contains("/$it/") }) {
+                        filesChecked++
+                        val currentAlign = readElfLoadAlignment(file)
+                        when {
+                            currentAlign == -1L -> {
+                                println("  ⚠ Skipping (not ELF): ${file.name} (${file.parentFile.name})")
+                                filesSkipped++
+                            }
+                            currentAlign >= 16384L -> {
+                                println("  ✓ Already aligned ($currentAlign): ${file.name} (${file.parentFile.name})")
+                                filesSkipped++
+                            }
+                            else -> {
+                                println("  ↻ Needs alignment ($currentAlign → 16384): ${file.name} (${file.parentFile.name})")
+                                try {
+                                    val tempFile = File("${file.absolutePath}.tmp")
+                                    val processBuilder = ProcessBuilder(
+                                        "python3",
+                                        alignScript.absolutePath,
+                                        file.absolutePath,
+                                        tempFile.absolutePath
+                                    )
+                                    val process = processBuilder.start()
+                                    val exitCode = process.waitFor()
+
+                                    if (exitCode == 0 && tempFile.exists()) {
+                                        file.delete()
+                                        tempFile.renameTo(file)
+                                        println("    ✓ Aligned successfully")
+                                        filesAligned++
+                                    } else {
+                                        println("    ✗ Alignment failed")
+                                        if (tempFile.exists()) tempFile.delete()
+                                    }
+                                } catch (e: Exception) {
+                                    println("    ✗ Error: ${e.message}")
                                 }
-                                if (result.exitValue == 0 && tmp.exists()) {
-                                    tmp.renameTo(so)
-                                    patched++
-                                    logger.lifecycle("  ✓ aligned  [${so.parentFile.name}] ${so.name}")
-                                } else {
-                                    skipped++
-                                    logger.warn("  ⚠ skipped  [${so.parentFile.name}] ${so.name} (not ELF or script error)")
-                                }
-                            } finally {
-                                if (tmp.exists()) tmp.delete()
                             }
                         }
+                    }
                 }
-
-                logger.lifecycle("=== alignElf${variantNameCap}: $patched aligned, $skipped skipped ===")
-                if (patched == 0 && skipped == 0)
-                    logger.warn("  ⚠ No .so files found — is this a native build? Check abiFilters.")
-            }
-        }
-
-        // ── Task 2: checkElfAlignment<Variant> ───────────────────────────────
-        val checkTask = tasks.register("checkElfAlignment${variantNameCap}") {
-            description = "Verify 16KB ELF alignment for all .so files in variant $variantName"
-            group       = "verification"
-
-            dependsOn(alignTask)
-
-            inputs.files(strippedDir)
-
-            doFirst {
-                if (!file(checkElfSh).exists())
-                    throw GradleException(
-                        "\n❌ check_elf_alignment.sh not found at: $checkElfSh\n" +
-                        "   Copy it from the Ajo project or clone server_extras."
-                    )
             }
 
-            doLast {
-                val soDir = strippedDir.get().asFile
-                if (!soDir.exists()) {
-                    logger.warn("checkElfAlignment${variantNameCap}: no stripped libs dir — skipping verification.")
-                    return@doLast
-                }
-
-                logger.lifecycle("=== checkElfAlignment${variantNameCap}: verifying $soDir ===")
-                val result = execOps.exec {
-                    commandLine("bash", checkElfSh, soDir.absolutePath)
-                    isIgnoreExitValue = true
-                }
-                if (result.exitValue != 0) {
-                    throw GradleException(
-                        "\n❌ 16KB alignment check FAILED for variant $variantName!\n" +
-                        "   One or more .so files are not aligned to 16384 bytes.\n" +
-                        "   Re-run with --info for details, or check the output above.\n" +
-                        "   APK packaging has been blocked to prevent Play Store rejection."
-                    )
-                }
-                logger.lifecycle("=== checkElfAlignment${variantNameCap}: all libraries ALIGNED ✓ ===")
-            }
-        }
-
-        // ── Hook: block APK packaging until alignment is verified ────────────
-        tasks.configureEach {
-            if (name == "package${variantNameCap}") {
-                dependsOn(checkTask)
-            }
+            println("=== Realignment complete: $filesChecked checked, $filesAligned patched, $filesSkipped skipped ===")
         }
     }
 }

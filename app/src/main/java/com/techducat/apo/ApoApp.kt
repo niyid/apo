@@ -4,7 +4,7 @@ import android.app.Application
 import android.content.Context
 import timber.log.Timber
 
-class ApoApp : Application() {
+open class ApoApp : Application() {
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
     }
