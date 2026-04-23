@@ -244,9 +244,11 @@ fun EnhancedSendScreen(
                             }
                         },
                         onPaste = {
-                            scope.launch { clipboard.getText()?.let { text ->
-                                recipients = recipients.mapIndexed { i, recipient ->
-                                    if (i == index) recipient.copy(address = text) else recipient
+                            scope.launch {
+                                clipboard.getText()?.let { text ->
+                                    recipients = recipients.mapIndexed { i, recipient ->
+                                        if (i == index) recipient.copy(address = text) else recipient
+                                    }
                                 }
                             }
                         },
