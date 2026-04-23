@@ -11,6 +11,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,8 +36,7 @@ fun SubaddressDetailsDialog(
     subaddress: Subaddress,
     onClose: () -> Unit
 ) {
-    val clipboard = LocalClipboard.current
-    val clipboardScope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     val qrBitmap = remember(subaddress.address) {
         generateQRCode(subaddress.address, 256)
@@ -143,7 +144,7 @@ fun SubaddressDetailsDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    clipboardScope.launch { clipboard.setText(subaddress.address) }
+                    clipboard.setText(AnnotatedString(subaddress.address))
                     copied = true
                 },
                 modifier = Modifier.fillMaxWidth()

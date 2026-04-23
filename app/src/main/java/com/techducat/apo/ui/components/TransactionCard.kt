@@ -14,6 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -31,8 +33,7 @@ import com.techducat.apo.R
 @Composable
 fun TransactionCard(transaction: Transaction) {
     var expanded by remember { mutableStateOf(false) }
-    val clipboard = LocalClipboard.current
-    val clipboardScope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     var txIdCopied by remember { mutableStateOf(false) }
     
     // Get string resources at composable level
@@ -183,7 +184,7 @@ fun TransactionCard(transaction: Transaction) {
                         )
                         IconButton(
                             onClick = {
-                                clipboardScope.launch { clipboard.setText(transaction.txId) }
+                                clipboard.setText(AnnotatedString(transaction.txId))
                                 txIdCopied = true
                             }
                         ) {

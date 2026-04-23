@@ -10,6 +10,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,8 +89,7 @@ fun SeedPhraseDialog(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val clipboard = LocalClipboard.current
-                        val clipboardScope = rememberCoroutineScope()
+                        val clipboard = LocalClipboardManager.current
                         var seedCopied by remember { mutableStateOf(false) }
                         
                         when {
@@ -128,7 +129,7 @@ fun SeedPhraseDialog(
                                     IconButton(
                                         onClick = {
                                             seedPhrase?.let {
-                                                clipboardScope.launch { clipboard.setText(it) }
+                                                clipboard.setText(AnnotatedString(it))
                                                 seedCopied = true
                                             }
                                         },

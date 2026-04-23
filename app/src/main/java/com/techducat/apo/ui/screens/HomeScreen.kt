@@ -18,7 +18,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -53,8 +55,7 @@ fun HomeScreen(
     val balanceXMR = WalletSuite.convertAtomicToXmr(balance).toDoubleOrNull() ?: 0.0
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
     val lockedXMR = WalletSuite.convertAtomicToXmr(lockedBalance).toDoubleOrNull() ?: 0.0
-    val clipboard = LocalClipboard.current
-    val clipboardScope = rememberCoroutineScope()
+    val clipboard = LocalClipboardManager.current
     var addressCopied by remember { mutableStateOf(false) }
     
     LaunchedEffect(addressCopied) {
@@ -241,7 +242,7 @@ fun HomeScreen(
                             )
                             
                             IconButton(onClick = {
-                                clipboardScope.launch { clipboard.setText(walletAddress) }
+                                clipboard.setText(AnnotatedString(walletAddress))
                                 addressCopied = true
                             }) {
                                 Icon(

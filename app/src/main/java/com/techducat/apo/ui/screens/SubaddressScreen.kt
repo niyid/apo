@@ -12,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.techducat.apo.ui.components.EmptyState
 import kotlinx.coroutines.launch
@@ -40,7 +42,7 @@ fun SubaddressScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedSubaddress by remember { mutableStateOf<Subaddress?>(null) }
     var showDetailsDialog by remember { mutableStateOf(false) }
-    val clipboard = LocalClipboard.current
+    val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val snackbarHost = remember { SnackbarHostState() }
     
@@ -129,8 +131,8 @@ fun SubaddressScreen(
                         SubaddressCard(
                             subaddress = sub,
                             onCopy = {
+                                clipboard.setText(AnnotatedString(sub.address))
                                 scope.launch {
-                                    clipboard.setText(sub.address)
                                     snackbarHost.showSnackbar(messageCopyAddress)
                                 }
                             },

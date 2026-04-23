@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
@@ -69,7 +70,7 @@ fun EnhancedSendScreen(
     var estimatedFee by remember { mutableStateOf(0.0) }
     var isSending by remember { mutableStateOf(false) }
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
-    val clipboard = LocalClipboard.current
+    val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     val snackbarHost = remember { SnackbarHostState() }
     
@@ -244,12 +245,9 @@ fun EnhancedSendScreen(
                             }
                         },
                         onPaste = {
-                            scope.launch {
-                                clipboard.getText()?.let { text ->
-                                    recipients = recipients.mapIndexed { i, recipient ->
-                                        if (i == index) recipient.copy(address = text) else recipient
-                                    }
-                                }
+                            val text = clipboard.getText()?.text ?: return@RecipientCard
+                            recipients = recipients.mapIndexed { i, recipient ->
+                                if (i == index) recipient.copy(address = text) else recipient
                             }
                         },
                         onSelectFromAddressBook = {
@@ -366,7 +364,6 @@ fun RecipientCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Changed from stringResource(R.string.recipient_format) to simple string concatenation
                 Text("${stringResource(R.string.recipient)} ${index + 1}")
                 
                 if (index > 0) {

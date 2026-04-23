@@ -9,6 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,10 +32,10 @@ fun ExportKeysDialog(
     walletSuite: WalletSuite,
     onDismiss: () -> Unit
 ) {
-    val clipboard = LocalClipboard.current
+    val clipboard = LocalClipboardManager.current
     var viewKeyCopied by remember { mutableStateOf(false) }
     var spendKeyCopied by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()  // Use the correct coroutine scope
+    val coroutineScope = rememberCoroutineScope()
     
     val viewKey = remember { walletSuite.viewKey }
     val spendKey = remember { walletSuite.spendKey }
@@ -77,10 +79,10 @@ fun ExportKeysDialog(
                     keyValue = viewKey,
                     isCopied = viewKeyCopied,
                     onCopy = {
-                        coroutineScope.launch { clipboard.setText(viewKey) }
+                        clipboard.setText(AnnotatedString(viewKey))
                         viewKeyCopied = true
                     },
-                    coroutineScope = coroutineScope  // Pass the correct scope
+                    coroutineScope = coroutineScope
                 )
                 
                 KeyDisplayCard(
@@ -88,10 +90,10 @@ fun ExportKeysDialog(
                     keyValue = spendKey,
                     isCopied = spendKeyCopied,
                     onCopy = {
-                        coroutineScope.launch { clipboard.setText(spendKey) }
+                        clipboard.setText(AnnotatedString(spendKey))
                         spendKeyCopied = true
                     },
-                    coroutineScope = coroutineScope  // Pass the correct scope
+                    coroutineScope = coroutineScope
                 )
             }
         },
@@ -120,7 +122,7 @@ fun KeyDisplayCard(
     keyValue: String,
     isCopied: Boolean,
     onCopy: () -> Unit,
-    coroutineScope: CoroutineScope  // Use proper CoroutineScope type
+    coroutineScope: CoroutineScope
 ) {
     var showCopiedFeedback by remember { mutableStateOf(false) }
     
@@ -176,7 +178,6 @@ fun KeyDisplayCard(
                     onClick = {
                         onCopy()
                         showCopiedFeedback = true
-                        // Use the passed coroutineScope
                         coroutineScope.launch {
                             delay(2000)
                             showCopiedFeedback = false
