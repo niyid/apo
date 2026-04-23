@@ -1,6 +1,7 @@
 package com.techducat.apo.ui.screens
 import com.techducat.apo.ui.theme.MoneroWalletTheme
 
+import android.content.ClipData
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,9 +19,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -29,6 +28,8 @@ import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.toClipEntry
 import com.techducat.apo.WalletSuite
 import com.techducat.apo.ui.components.QuickActionButton
 import com.techducat.apo.R
@@ -55,7 +56,8 @@ fun HomeScreen(
     val balanceXMR = WalletSuite.convertAtomicToXmr(balance).toDoubleOrNull() ?: 0.0
     val unlockedXMR = WalletSuite.convertAtomicToXmr(unlockedBalance).toDoubleOrNull() ?: 0.0
     val lockedXMR = WalletSuite.convertAtomicToXmr(lockedBalance).toDoubleOrNull() ?: 0.0
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     var addressCopied by remember { mutableStateOf(false) }
     
     LaunchedEffect(addressCopied) {
@@ -242,7 +244,11 @@ fun HomeScreen(
                             )
                             
                             IconButton(onClick = {
-                                clipboard.setText(AnnotatedString(walletAddress))
+                                clipboardScope.launch {
+                                    clipboard.setClipEntry(
+                                        ClipData.newPlainText("", walletAddress).toClipEntry()
+                                    )
+                                }
                                 addressCopied = true
                             }) {
                                 Icon(

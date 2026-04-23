@@ -1,6 +1,7 @@
 package com.techducat.apo.ui.dialogs
 import com.techducat.apo.ui.theme.MoneroWalletTheme
 
+import android.content.ClipData
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,8 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,6 +20,8 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.toClipEntry
 import com.techducat.apo.utils.generateQRCode
 import com.techducat.apo.R
 
@@ -30,7 +31,8 @@ import com.techducat.apo.R
 
 @Composable
 fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
     
     val qrBitmap = remember(address) {
@@ -113,7 +115,11 @@ fun ReceiveDialog(address: String, onDismiss: () -> Unit) {
                 
                 Button(
                     onClick = {
-                        clipboard.setText(AnnotatedString(address))
+                        clipboardScope.launch {
+                            clipboard.setClipEntry(
+                                ClipData.newPlainText("", address).toClipEntry()
+                            )
+                        }
                         copied = true
                     },
                     modifier = Modifier.fillMaxWidth()

@@ -1,5 +1,6 @@
 package com.techducat.apo.ui.dialogs
 
+import android.content.ClipData
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -9,8 +10,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -18,6 +17,8 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.toClipEntry
 import com.techducat.apo.WalletSuite
 import com.techducat.apo.R
 import kotlinx.coroutines.CoroutineScope
@@ -32,7 +33,7 @@ fun ExportKeysDialog(
     walletSuite: WalletSuite,
     onDismiss: () -> Unit
 ) {
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     var viewKeyCopied by remember { mutableStateOf(false) }
     var spendKeyCopied by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
@@ -79,7 +80,11 @@ fun ExportKeysDialog(
                     keyValue = viewKey,
                     isCopied = viewKeyCopied,
                     onCopy = {
-                        clipboard.setText(AnnotatedString(viewKey))
+                        coroutineScope.launch {
+                            clipboard.setClipEntry(
+                                ClipData.newPlainText("", viewKey).toClipEntry()
+                            )
+                        }
                         viewKeyCopied = true
                     },
                     coroutineScope = coroutineScope
@@ -90,7 +95,11 @@ fun ExportKeysDialog(
                     keyValue = spendKey,
                     isCopied = spendKeyCopied,
                     onCopy = {
-                        clipboard.setText(AnnotatedString(spendKey))
+                        coroutineScope.launch {
+                            clipboard.setClipEntry(
+                                ClipData.newPlainText("", spendKey).toClipEntry()
+                            )
+                        }
                         spendKeyCopied = true
                     },
                     coroutineScope = coroutineScope

@@ -1,6 +1,7 @@
 package com.techducat.apo.ui.dialogs
 import com.techducat.apo.ui.theme.MoneroWalletTheme
 
+import android.content.ClipData
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,14 +11,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.toClipEntry
 import com.techducat.apo.WalletSuite
 import com.techducat.apo.R
 
@@ -89,7 +90,8 @@ fun SeedPhraseDialog(
                         modifier = Modifier.padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val clipboard = LocalClipboardManager.current
+                        val clipboard = LocalClipboard.current
+                        val clipboardScope = rememberCoroutineScope()
                         var seedCopied by remember { mutableStateOf(false) }
                         
                         when {
@@ -128,8 +130,12 @@ fun SeedPhraseDialog(
                                     
                                     IconButton(
                                         onClick = {
-                                            seedPhrase?.let {
-                                                clipboard.setText(AnnotatedString(it))
+                                            seedPhrase?.let { seed ->
+                                                clipboardScope.launch {
+                                                    clipboard.setClipEntry(
+                                                        ClipData.newPlainText("", seed).toClipEntry()
+                                                    )
+                                                }
                                                 seedCopied = true
                                             }
                                         },

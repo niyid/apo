@@ -1,5 +1,6 @@
 package com.techducat.apo.ui.screens
 
+import android.content.ClipData
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,8 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.techducat.apo.ui.components.EmptyState
 import kotlinx.coroutines.launch
@@ -21,6 +20,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.toClipEntry
 import com.techducat.apo.WalletSuite
 import com.techducat.apo.storage.WalletDataStore
 import com.techducat.apo.ui.components.SubaddressCard
@@ -42,7 +43,7 @@ fun SubaddressScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedSubaddress by remember { mutableStateOf<Subaddress?>(null) }
     var showDetailsDialog by remember { mutableStateOf(false) }
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val snackbarHost = remember { SnackbarHostState() }
     
@@ -131,8 +132,10 @@ fun SubaddressScreen(
                         SubaddressCard(
                             subaddress = sub,
                             onCopy = {
-                                clipboard.setText(AnnotatedString(sub.address))
                                 scope.launch {
+                                    clipboard.setClipEntry(
+                                        ClipData.newPlainText("", sub.address).toClipEntry()
+                                    )
                                     snackbarHost.showSnackbar(messageCopyAddress)
                                 }
                             },

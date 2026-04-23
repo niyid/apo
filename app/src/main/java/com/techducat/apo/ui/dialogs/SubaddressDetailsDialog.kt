@@ -1,5 +1,6 @@
 package com.techducat.apo.ui.dialogs
 
+import android.content.ClipData
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,8 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -23,6 +22,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.toClipEntry
 import com.techducat.apo.utils.generateQRCode
 import com.techducat.apo.models.Subaddress
 import com.techducat.apo.R
@@ -36,7 +37,8 @@ fun SubaddressDetailsDialog(
     subaddress: Subaddress,
     onClose: () -> Unit
 ) {
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
     val qrBitmap = remember(subaddress.address) {
         generateQRCode(subaddress.address, 256)
@@ -144,7 +146,11 @@ fun SubaddressDetailsDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    clipboard.setText(AnnotatedString(subaddress.address))
+                    clipboardScope.launch {
+                        clipboard.setClipEntry(
+                            ClipData.newPlainText("", subaddress.address).toClipEntry()
+                        )
+                    }
                     copied = true
                 },
                 modifier = Modifier.fillMaxWidth()
